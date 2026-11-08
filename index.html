@@ -27,11 +27,22 @@ nav a.on{color:var(--p);font-weight:700}
 .card{background:var(--card);border:1px solid var(--ln);border-radius:16px;padding:14px;margin-bottom:12px}
 .card h2{font-size:13px;margin:0 0 8px;color:var(--p);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;justify-content:space-between}
 .card h2 a,.card h2 button{font-size:13px;text-transform:none;letter-spacing:0;color:var(--p);text-decoration:none;background:none;border:0;font-weight:600;cursor:pointer;font-family:inherit}
-.fgrid{display:flex;flex-wrap:wrap;gap:0 10px}.fgrid .f{flex:1 1 100%;min-width:0}.fgrid .f.half{flex:1 1 calc(50% - 10px)}.fgrid .f.third{flex:1 1 calc(33% - 10px)}
+.fgrid{display:flex;flex-wrap:wrap;gap:0 12px}.fgrid .f{flex:1 1 100%;min-width:0}.fgrid .f.half{flex:1 1 calc(50% - 12px)}.fgrid .f.third{flex:1 1 calc(33% - 12px)}
+@media (max-width:370px){.fgrid .f.half{flex-basis:100%}}
+.chips label:has(input:checked){background:var(--p2);border-color:var(--p);color:var(--p-dk);font-weight:600}
+.chips label{font-weight:500}
 .fgrid .f.third label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .row{display:flex;gap:10px}.row>*{flex:1;min-width:0}
-label{display:block;font-size:13px;color:var(--mu);margin:10px 0 4px}
-input,select,textarea{width:100%;font:inherit;padding:11px 12px;border:1px solid var(--ln);border-radius:12px;background:#fff;color:var(--tx);min-height:46px}
+label,.lbl{display:block;font-size:14px;color:#3d4a41;font-weight:600;margin:16px 0 6px;line-height:1.3}
+input,select,textarea{display:block;width:100%;max-width:100%;min-width:0;font:inherit;font-size:16px;padding:12px 13px;border:1.5px solid #b5c4ab;border-radius:12px;background:#fff;color:var(--tx);min-height:50px;-webkit-appearance:none;appearance:none;box-shadow:inset 0 1px 2px rgba(30,60,35,.06)}
+input::placeholder,textarea::placeholder{color:#a1ada4}
+select{padding-right:40px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%2326602d' stroke-width='2'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;text-overflow:ellipsis}
+select.vazio{color:#8b978e}
+input[type=date]{line-height:1.25;text-align:left}
+input[type=date]::-webkit-date-and-time-value{text-align:left}
+input[type=checkbox]{-webkit-appearance:auto;appearance:auto;box-shadow:none;min-height:0}
+.hint{font-size:13px;color:var(--p);font-weight:600;margin-top:5px;min-height:0}
+.hint:empty{display:none}
 textarea{min-height:96px;resize:vertical}
 input:focus,select:focus,textarea:focus{outline:3px solid var(--p2);border-color:var(--p)}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:0;border-radius:14px;padding:12px 16px;font-family:inherit;font-weight:650;font-size:15px;background:var(--p);color:#fff;text-decoration:none;cursor:pointer;min-height:46px;text-align:center}
@@ -155,56 +166,75 @@ const DB = (() => {
 
 /* =====================================================================
    2. CAMPOS DO CADASTRO
-   Para incluir um campo novo, basta acrescentar uma linha aqui:
-   [chave, rótulo, tipo, obrigatório]. Tipos: text, date, number,
-   email, tel, cpf, textarea, ou uma lista de opções.
+   Para incluir um campo novo, basta acrescentar uma linha em SECOES_MAE
+   ou CAMPOS_BEBE (formato descrito logo abaixo).
    ===================================================================== */
 const SN = ['', 'Sim', 'Não'];
+const NUM = (de, ate, mais) => ['', ...Array.from({ length: ate - de + 1 }, (_, i) => String(de + i)), ...(mais ? [mais] : [])];
+/* Formato: [chave, rótulo, tipo, obrigatório, largura, condição]
+   tipo: 'text' | 'date' | 'number' | 'email' | 'tel' | 'textarea' | [opções da lista] | { multi: [opções] }
+   condição: [chave, valor] mostra o campo só quando a outra resposta for esse valor (em listas múltiplas: quando incluir). */
 const SECOES_MAE = [
   { titulo: 'Dados da mãe', campos: [
     ['nome', 'Nome completo', 'text', true],
     ['nascimento', 'Data de nascimento', 'date', false, 'half'],
-    ['cpf', 'CPF', 'cpf', false, 'half'],
-    ['profissao', 'Profissão', 'text'],
+    ['profissao', 'Profissão', 'text', false, 'half'],
     ['telefone', 'Telefone / WhatsApp', 'tel', false, 'half'],
     ['email', 'E-mail', 'email', false, 'half'],
     ['endereco', 'Endereço completo', 'textarea'],
   ] },
   { titulo: 'Parceiro(a)', campos: [
     ['parceiroNome', 'Nome do esposo / parceiro(a)', 'text'],
-    ['parceiroIdade', 'Idade', 'number', false, 'half'],
+    ['parceiroIdade', 'Idade', NUM(16, 70), false, 'half'],
     ['parceiroProfissao', 'Profissão', 'text', false, 'half'],
   ] },
-  { titulo: 'Gestação e saúde', campos: [
+  { titulo: 'Gestação e pré-natal', campos: [
     ['dpp', 'Data provável do parto', 'date', false, 'half'],
     ['risco', 'Pré-natal', ['', 'Baixo risco', 'Alto risco'], false, 'half'],
-    ['gestacoes', 'Nº de gestações', 'number', false, 'third'],
-    ['partos', 'Nº de partos', 'number', false, 'third'],
-    ['abortos', 'Nº de abortos', 'number', false, 'third'],
+    ['gestacoes', 'Gestações', NUM(1, 9, '10 ou mais'), false, 'third'],
+    ['partos', 'Partos', NUM(0, 9, '10 ou mais'), false, 'third'],
+    ['abortos', 'Abortos', NUM(0, 9, '10 ou mais'), false, 'third'],
     ['prenatalista', 'Pré-natalista(s)', 'text'],
     ['maternidade', 'Maternidade de escolha', 'text', false, 'half'],
     ['pediatra', 'Pediatra', 'text', false, 'half'],
-    ['alergias', 'Alguma alergia?', 'text', false, 'half'],
-    ['restricao', 'Restrição alimentar?', 'text', false, 'half'],
-    ['medicamentos', 'Toma algum medicamento?', 'text'],
-    ['mamas', 'Percebeu alguma diferença nas mamas durante a gestação?', 'textarea'],
+  ] },
+  { titulo: 'Saúde da mãe', campos: [
+    ['alergias', 'Tem alguma alergia?', SN, false, 'half'],
+    ['alergiasQuais', 'Quais alergias?', 'text', false, '', ['alergias', 'Sim']],
+    ['medicamentos', 'Toma algum medicamento?', SN, false, 'half'],
+    ['medicamentosQuais', 'Quais medicamentos e doses?', 'text', false, '', ['medicamentos', 'Sim']],
+    ['restricao', 'Tem restrição alimentar?', SN, false, 'half'],
+    ['restricaoQuais', 'Quais restrições?', { multi: ['Lactose', 'Proteína do leite (APLV)', 'Glúten', 'Vegetariana', 'Vegana', 'Diabetes / açúcar', 'Outra'] }, false, '', ['restricao', 'Sim']],
+    ['restricaoOutra', 'Descreva a restrição', 'text', false, '', ['restricaoQuais', 'Outra']],
+    ['cirurgiaMamas', 'Já realizou algum procedimento cirúrgico nas mamas?', ['', 'Não', 'Mamoplastia de aumento (prótese)', 'Mamoplastia redutora', 'Mastopexia', 'Reconstrução mamária', 'Biópsia ou retirada de nódulo', 'Outro procedimento']],
+    ['cirurgiaMamasOutro', 'Qual procedimento?', 'text', false, '', ['cirurgiaMamas', 'Outro procedimento']],
+    ['mamas', 'Percebeu diferenças nas mamas durante a gestação?', { multi: ['Aumento de volume', 'Mais sensibilidade ou dor', 'Aréolas mais escuras', 'Veias mais aparentes', 'Saída de colostro', 'Não percebeu mudanças', 'Outro'] }],
+    ['mamasOutro', 'Descreva a diferença', 'text', false, '', ['mamas', 'Outro']],
   ] },
   { titulo: 'Rede de apoio', campos: [
-    ['avos', 'Avós presentes?', SN, false, 'half'],
+    ['avos', 'Avós presentes?', ['', 'Sim, maternos e paternos', 'Sim, só maternos', 'Sim, só paternos', 'Não / moram longe']],
     ['redeApoio', 'Tem rede de apoio?', SN, false, 'half'],
-    ['redeApoioQuem', 'Quem ajuda? (opcional)', 'text'],
+    ['redeApoioQuem', 'Quem ajuda?', { multi: ['Parceiro(a)', 'Mãe', 'Sogra', 'Irmã(o)', 'Outros familiares', 'Amigas', 'Babá / folguista', 'Doula', 'Outro'] }, false, '', ['redeApoio', 'Sim']],
+    ['redeApoioOutro', 'Quem mais ajuda?', 'text', false, '', ['redeApoioQuem', 'Outro']],
   ] },
 ];
 const CAMPOS_MAE = SECOES_MAE.flatMap(s => s.campos);
+const PARTO = ['', 'Vaginal (normal)', 'Vaginal com fórceps ou vácuo', 'Cesárea eletiva (agendada)', 'Cesárea intraparto / emergência'];
 const CAMPOS_BEBE = [
   ['nome', 'Nome do bebê (ou nome escolhido)', 'text'],
   ['nascimento', 'Data de nascimento', 'date', false, 'half'],
-  ['peso', 'Peso ao nascer (g)', 'number', false, 'half'],
   ['sexo', 'Sexo', ['', 'Feminino', 'Masculino'], false, 'half'],
-  ['parto', 'Tipo de parto', ['', 'Normal', 'Cesárea'], false, 'half'],
-  ['ig', 'Idade gestacional ao nascer (semanas)', 'number'],
+  ['peso', 'Peso ao nascer (g)', 'number', false, 'half'],
+  ['ig', 'Idade gestacional ao nascer', ['', 'Menos de 28 semanas', ...Array.from({ length: 15 }, (_, i) => `${28 + i} semanas`)], false, 'half'],
+  ['parto', 'Tipo de parto', PARTO],
+  ['apgar1', 'Apgar 1º minuto', NUM(0, 10), false, 'half'],
+  ['apgar5', 'Apgar 5º minuto', NUM(0, 10), false, 'half'],
   ['obs', 'Observações (amamentação, intercorrências)', 'textarea'],
 ];
+const TIPOS_ATEND = ['', 'Consulta pré-natal de amamentação', 'Primeira visita pós-parto', 'Retorno', 'Laserterapia', 'Avaliação de frênulo lingual', 'Ordenha e retorno ao trabalho', 'Introdução de fórmula / relactação', 'Desmame', 'Atendimento online', 'Outro'];
+const REGIOES_LASER = ['Mamilo direito', 'Mamilo esquerdo', 'Aréola direita', 'Aréola esquerda', 'Mama direita', 'Mama esquerda', 'Outra'];
+const UFS = ['', 'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
+const coren = st => st.corenNum ? ('COREN' + (st.corenUF ? '-' + st.corenUF : '') + ' ' + st.corenNum) : '';
 
 /* ===================== Utilidades ===================== */
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -235,12 +265,6 @@ function idade(nasc, ref) {
   return `${Math.floor(m / 12)} anos`;
 }
 const anos = nasc => { if (!nasc) return ''; const a = parseD(nasc), b = new Date(); let y = b.getFullYear() - a.getFullYear(); if (b < new Date(b.getFullYear(), a.getMonth(), a.getDate())) y--; return y >= 0 ? `${y} anos` : ''; };
-const maskCPF = v => v.replace(/\D/g, '').slice(0, 11).replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
-function cpfOk(v) {
-  const c = v.replace(/\D/g, ''); if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
-  for (let t = 9; t < 11; t++) { let s = 0; for (let i = 0; i < t; i++) s += c[i] * (t + 1 - i); if (((s * 10) % 11) % 10 != c[t]) return false; }
-  return true;
-}
 const maskTel = v => { const d = v.replace(/\D/g, '').slice(0, 11); return d.length > 10 ? d.replace(/(\d{2})(\d{5})(\d{0,4})/, '($1) $2-$3') : d.replace(/(\d{2})(\d{4})(\d{0,4})/, '($1) $2-$3').replace(/-$/, ''); };
 const telWa = v => { let d = (v || '').replace(/\D/g, ''); if (d && d.length <= 11) d = '55' + d; return d; };
 const iniciais = n => (n || '?').trim().split(/\s+/).filter(Boolean).slice(0, 2).map(p => p[0].toUpperCase()).join('');
@@ -252,12 +276,24 @@ const norm = s => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toL
 const bebesDe = c => (c?.bebes || []);
 const gestante = c => c?.mae?.dpp && c.mae.dpp >= addD(today(), -30) && !bebesDe(c).some(b => b.nascimento);
 function valorCampo(k, v) {
-  if (k === 'nascimento') return `${fmtD(v)} (${anos(v)})`;
+  if (k === 'nascimento') return `${anos(v)} (nasceu em ${fmtD(v)})`;
   if (k === 'dpp') { const sem = Math.round((parseD(v) - parseD(today())) / 6048e5); return fmtD(v) + (sem > 0 ? ` (faltam ${sem} semanas)` : ''); }
   if (k === 'parceiroIdade') return v + ' anos';
-  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? fmtD(v) : v;
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? fmtD(v) : String(v).split('; ').join(', ');
 }
+const OUTROS = ['Outro', 'Outra', 'Outro procedimento'];
+function respostaCompleta(m, k) {
+  let v = valorCampo(k, m[k]);
+  CAMPOS_MAE.filter(d => d[5] && d[5][0] === k && m[d[0]]).forEach(d => {
+    const filho = respostaCompleta(m, d[0]);
+    if (OUTROS.includes(d[5][1])) v = v.split(', ').map(x => x === d[5][1] ? filho : x).join(', ');
+    else v = (v === 'Sim' ? '' : v + ' · ') + filho;
+  });
+  return v;
+}
+const textoLaser = r => r.laser ? 'Sim' + [(r.laserRegiao || '').split('; ').filter(Boolean).join(', '), r.laserObs].filter(Boolean).map(x => ' · ' + x).join('') : 'Não';
 const bebesDaVisita = (v, c) => { const bs = bebesDe(c); return v.bebeIds?.length ? bs.filter(b => v.bebeIds.includes(b.id)) : bs; };
+const tipoDe = v => v.tipo === 'Outro' ? (v.tipoOutro || 'Outro') : (v.tipo || '');
 function statusVisita(v) {
   if (v.status !== 'agendada') return v.status;
   if (v.rascunhoEm) return 'rascunho';
@@ -272,7 +308,7 @@ async function carregar() {
 }
 function itemVisita(v, c, { data = true } = {}) {
   const d = parseD(v.data); const bs = bebesDaVisita(v, c);
-  const sub = [bs.map(b => b.nome + (b.nascimento ? ` (${idade(b.nascimento, v.data)})` : '')).join(', '), v.status === 'realizada' ? '' : v.local].filter(Boolean)[0] || '';
+  const sub = [tipoDe(v), bs.map(b => b.nome + (b.nascimento ? ` (${idade(b.nascimento, v.data)})` : '')).join(', ')].filter(Boolean).join(' · ') || v.local || '';
   return `<a class="item ${v.status}" href="#/visita/${v.id}"><div class="when">${v.hora}${data ? `<small>${d.getDate()} ${M3(d.getMonth())}</small>` : `<small>${v.duracao || 60} min</small>`}</div>
     <div class="grow"><b>${esc(c?.mae.nome || 'Cliente removida')}</b><div class="sub">${esc(sub)}</div></div>${tag(v)}</a>`;
 }
@@ -428,7 +464,7 @@ async function telaCliente(id) {
   const lgpdHTML = `
       <div class="sub">${c.aceiteLGPD ? '✅ Consentimento LGPD em ' + new Date(c.aceiteLGPD).toLocaleDateString('pt-BR') : '⚠️ Sem consentimento LGPD registrado. Envie o link de cadastro para a cliente confirmar.'}</div>
       <button class="btn ghost full" id="linkAtual">🔗 Enviar link para a cliente revisar a ficha</button>`;
-  const secoesMae = SECOES_MAE.map((sec, i) => { const linhas = sec.campos.filter(([k]) => k !== 'nome' && m[k]).map(([k, rot]) => kv(rot.replace(/\?$/, ''), valorCampo(k, m[k]))).join(''); return linhas ? `<div class="card"><h2>${sec.titulo}</h2>${linhas ? `<dl class="kv">${linhas}</dl>` : '<div class="sub">Sem dados.</div>'}</div>` : ''; }).join('');
+  const secoesMae = SECOES_MAE.map((sec, i) => { const linhas = sec.campos.filter(d => d[0] !== 'nome' && !d[5] && m[d[0]]).map(([k, rot]) => kv(k === 'nascimento' ? 'Idade' : rot.replace(/\?$/, ''), respostaCompleta(m, k))).join(''); return linhas ? `<div class="card"><h2>${sec.titulo}</h2>${linhas ? `<dl class="kv">${linhas}</dl>` : '<div class="sub">Sem dados.</div>'}</div>` : ''; }).join('');
   const feitos = vs.filter(v => v.status === 'realizada');
   const agendadas = vs.filter(v => v.status === 'agendada').sort((a, b) => (a.data + a.hora).localeCompare(b.data + b.hora));
   const canceladas = vs.filter(v => v.status === 'cancelada');
@@ -440,7 +476,7 @@ async function telaCliente(id) {
     <div class="btns" style="margin:0 0 12px"><a class="btn" href="#/agendar?cliente=${id}">📅 Agendar visita</a><a class="btn sec" href="#/ficha/${id}">✏️ Editar ficha</a></div>
     <div class="card"><h2>Bebês <a href="#/ficha/${id}?novoBebe=1">＋ Adicionar</a></h2>
       ${bs.length ? bs.map(b => `<div class="baby"><span class="ic">${b.sexo === 'Masculino' ? '👶🏻' : b.sexo === 'Feminino' ? '👶🏻' : '👶🏻'}</span><div class="grow"><b>${esc(b.nome || 'Bebê sem nome')}</b>
-        <div class="sub">${[b.nascimento ? `${fmtD(b.nascimento)} (${idade(b.nascimento)})` : 'Ainda não nasceu' + (m.dpp ? ' · DPP ' + fmtD(m.dpp) : ''), b.peso && `${b.peso} g ao nascer`, b.parto, b.ig && `${b.ig} sem`].filter(Boolean).join(' · ')}</div>${b.obs ? `<div class="sub">${esc(b.obs)}</div>` : ''}</div></div>`).join('') : '<div class="sub">Nenhum bebê cadastrado.</div>'}</div>
+        <div class="sub">${[b.nascimento ? `${fmtD(b.nascimento)} (${idade(b.nascimento)})` : 'Ainda não nasceu' + (m.dpp ? ' · DPP ' + fmtD(m.dpp) : ''), b.peso && `${b.peso} g ao nascer`, b.ig, b.parto, (b.apgar1 || b.apgar5) && `Apgar ${b.apgar1 || '–'}/${b.apgar5 || '–'}`].filter(Boolean).join(' · ')}</div>${b.obs ? `<div class="sub">${esc(b.obs)}</div>` : ''}</div></div>`).join('') : '<div class="sub">Nenhum bebê cadastrado.</div>'}</div>
     <div class="sec-title">Visitas agendadas (${agendadas.length})</div>
     ${agendadas.length ? agendadas.map(v => itemVisita(v, c)).join('') : `<div class="card sub" style="text-align:center">Nenhuma visita agendada. <a href="#/agendar?cliente=${id}" style="color:var(--p);font-weight:650">Agendar</a></div>`}
     <div class="sec-title">Registros de atendimento (${feitos.length}) · do mais recente ao mais antigo</div>
@@ -448,7 +484,7 @@ async function telaCliente(id) {
       return `<div class="tl realizada"><div class="card" style="margin:0">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><div><div class="regdata">${fmtLong(v.data).replace(/^./, x => x.toUpperCase())} de ${parseD(v.data).getFullYear()}</div><div class="sub">${v.hora}${bv.length ? ' · ' + bv.map(b => esc(b.nome) + (b.nascimento ? ' com ' + idade(b.nascimento, v.data) : '')).join(', ') : ''}</div></div><a class="btn sm ghost" href="#/visita/${v.id}">Abrir</a></div>
       ${bloco('Descrição do atendimento', r.descricao)}${bloco('Condição da mãe', r.estadoMae)}
-      <div class="sub" style="margin-top:8px">Laser</div><div style="font-size:15px">${r.laser ? 'Sim' + (r.laserObs ? ' · ' + esc(r.laserObs) : '') : 'Não'}</div>
+      <div class="sub" style="margin-top:8px">Laser</div><div style="font-size:15px">${esc(textoLaser(r))}</div>
       ${bv.some(b => r.pesos?.[b.id]) ? bloco('Peso', bv.filter(b => r.pesos?.[b.id]).map(b => b.nome + ': ' + r.pesos[b.id] + ' g').join(' · ')) : ''}
       ${bloco('Orientações', r.orientacoes)}${bloco('Observações adicionais', r.obsAdicionais)}
       ${v.fotos?.length ? `<div class="photos">${v.fotos.map(f => `<div><img src="${f.src}" alt="Foto do atendimento"></div>`).join('')}</div>` : ''}
@@ -467,16 +503,31 @@ async function telaCliente(id) {
 }
 
 /* ===================== Ficha (formulário mãe + bebês) ===================== */
-function campo(grupo, def, val) { return `<div class="f ${def[4] || ''}">${campoEl(grupo, def, val)}</div>`; }
+function campo(grupo, def, val) {
+  const cond = def[5] ? ` data-cond="${def[5][0]}" data-condv="${esc(def[5][1])}"` : '';
+  return `<div class="f ${def[4] || ''}"${cond}>${campoEl(grupo, def, val)}</div>`;
+}
 function campoEl(grupo, [k, rot, tipo, req], val) {
   const id = `${grupo}_${k}`; const v = esc(val ?? '');
   let el;
-  if (Array.isArray(tipo)) el = `<select id="${id}" data-k="${k}">${tipo.map(o => `<option ${o === val ? 'selected' : ''} value="${esc(o)}">${o || 'Selecione'}</option>`).join('')}</select>`;
-  else if (tipo === 'textarea') el = `<textarea id="${id}" data-k="${k}" style="min-height:70px">${v}</textarea>`;
-  else if (tipo === 'cpf') el = `<input id="${id}" data-k="${k}" inputmode="numeric" placeholder="000.000.000-00" value="${v}" oninput="this.value=maskCPF(this.value)"><div class="err" id="${id}_err"></div>`;
+  if (Array.isArray(tipo)) { const ops = val && !tipo.includes(val) ? [...tipo, val] : tipo; el = `<select id="${id}" data-k="${k}" class="${val ? '' : 'vazio'}">${ops.map(o => `<option ${o === val ? 'selected' : ''} value="${esc(o)}">${o || 'Selecione'}</option>`).join('')}</select>`; }
+  else if (tipo && tipo.multi) { const sel = String(val || '').split('; ').filter(Boolean); el = `<div class="chips" id="${id}" data-k="${k}" data-multi="1">${tipo.multi.map(o => `<label><input type="checkbox" value="${esc(o)}" ${sel.includes(o) ? 'checked' : ''}>${esc(o)}</label>`).join('')}</div>`; return `<span class="lbl">${rot}</span>${el}`; }
+  else if (tipo === 'textarea') el = `<textarea id="${id}" data-k="${k}" style="min-height:76px">${v}</textarea>`;
   else if (tipo === 'tel') el = `<input id="${id}" data-k="${k}" type="tel" inputmode="tel" placeholder="(11) 90000-0000" value="${v}" oninput="this.value=maskTel(this.value)">`;
   else el = `<input id="${id}" data-k="${k}" type="${tipo}" ${tipo === 'number' ? 'inputmode="numeric" min="0"' : ''} value="${v}">`;
-  return `<label for="${id}">${rot}${req ? ' *' : ''}</label>${el}`;
+  const hint = k === 'nascimento' ? `<div class="hint" data-idade="${grupo === 'mae' ? 'mae' : 'bebe'}"></div>` : '';
+  return `<label for="${id}">${rot}${req ? ' *' : ''}</label>${el}${hint}`;
+}
+const lerValor = el => el.dataset.multi ? [...el.querySelectorAll('input:checked')].map(i => i.value).join('; ') : el.value.trim();
+function aplicarCondicoes() {
+  $$('[data-cond]').forEach(w => {
+    const grid = w.closest('.babyform') || w.closest('.card') || document;
+    const ctrl = grid.querySelector(`[data-k="${w.dataset.cond}"]`); if (!ctrl) return;
+    const v = lerValor(ctrl); const alvo = w.dataset.condv;
+    w.hidden = ctrl.dataset.multi ? !v.split('; ').includes(alvo) : v !== alvo;
+  });
+  $$('select').forEach(x => x.classList.toggle('vazio', !x.value));
+  $$('[data-idade]').forEach(h => { const val = h.previousElementSibling && h.previousElementSibling.value; h.textContent = val ? (h.dataset.idade === 'mae' ? anos(val) : (idade(val) ? idade(val) + ' de vida' : '')) : ''; });
 }
 const bebeForm = (b = {}, i) => `<div class="babyform" data-id="${esc(b.id || uid())}"><h3><span>Bebê ${i + 1}</span><button type="button" class="rmb">Remover</button></h3><div class="fgrid">${CAMPOS_BEBE.map(f => campo('b' + i, f, b[f[0]])).join('')}</div></div>`;
 function fichaHTML(c = {}) {
@@ -488,16 +539,18 @@ function fichaHTML(c = {}) {
 function ligarFicha() {
   const renum = () => $$('.babyform').forEach((f, i) => { f.querySelector('h3 span').textContent = 'Bebê ' + (i + 1); f.querySelector('.rmb').hidden = $$('.babyform').length < 2; });
   const ligar = () => $$('.rmb').forEach(b => b.onclick = () => { const f = b.closest('.babyform'); if (f.querySelector('[data-k=nome]').value && !confirm('Remover este bebê da ficha?')) return; f.remove(); renum(); });
-  $('#addBebe').onclick = () => { const n = $$('.babyform').length; $('#bebes').insertAdjacentHTML('beforeend', bebeForm({}, n + 100)); renum(); ligar(); $$('.babyform').at(-1).querySelector('input').focus(); };
+  $('#addBebe').onclick = () => { const n = $$('.babyform').length; $('#bebes').insertAdjacentHTML('beforeend', bebeForm({}, n + 100)); renum(); ligar(); aplicarCondicoes(); $$('.babyform').at(-1).querySelector('input').focus(); };
   renum(); ligar();
+  if (!ligarFicha.ok) { document.addEventListener('change', aplicarCondicoes); document.addEventListener('input', e => { if (e.target.type === 'date') aplicarCondicoes(); }); ligarFicha.ok = true; }
+  aplicarCondicoes();
 }
 function lerFicha() {
-  const mae = {}; CAMPOS_MAE.forEach(([k]) => mae[k] = $(`#mae_${k}`).value.trim());
-  const bebes = $$('.babyform').map(f => { const b = { id: f.dataset.id }; f.querySelectorAll('[data-k]').forEach(el => b[el.dataset.k] = el.value.trim()); return b; })
+  const ativo = el => !el.closest('[data-cond][hidden]');
+  const mae = {}; CAMPOS_MAE.forEach(([k]) => { const el = $(`#mae_${k}`); mae[k] = el && ativo(el) ? lerValor(el) : ''; });
+  const bebes = $$('.babyform').map(f => { const b = { id: f.dataset.id }; f.querySelectorAll('[data-k]').forEach(el => b[el.dataset.k] = ativo(el) ? lerValor(el) : ''); return b; })
     .filter(b => CAMPOS_BEBE.some(([k]) => b[k]));
   if (!mae.nome) { toast('Informe o nome da mãe'); $('#mae_nome').focus(); return null; }
-  $('#mae_cpf_err').textContent = '';
-  if (mae.cpf && !cpfOk(mae.cpf)) { $('#mae_cpf_err').textContent = 'CPF inválido, confira os números.'; $('#mae_cpf').focus(); return null; }
+  for (const b of bebes) for (const k of ['apgar1', 'apgar5']) if (b[k] && !(/^\d+$/.test(b[k]) && +b[k] <= 10)) { toast('O Apgar vai de 0 a 10'); return null; }
   return { mae, bebes };
 }
 let importPendente = null;
@@ -568,6 +621,8 @@ async function telaAgendar(visitId, q) {
     <label for="cli">Cliente *</label><select id="cli"><option value="">Selecione a cliente</option>${cs.map(c => `<option value="${c.id}" ${c.id === sel ? 'selected' : ''}>${esc(c.mae.nome)}</option>`).join('')}</select>
     <div id="bbx"></div>
     <div class="row"><div><label for="data">Dia *</label><input id="data" type="date" value="${v?.data || q.get('data') || today()}"></div><div><label for="hora">Horário *</label><input id="hora" type="time" value="${v?.hora || '09:00'}" step="900"></div></div>
+    <label for="tipoAt">Tipo de atendimento</label><select id="tipoAt">${[...TIPOS_ATEND, ...(v?.tipo && !TIPOS_ATEND.includes(v.tipo) ? [v.tipo] : [])].map(o => `<option value="${esc(o)}" ${o === (v?.tipo || '') ? 'selected' : ''}>${o || 'Selecione'}</option>`).join('')}</select>
+    <div id="tipoOutroBox" ${v?.tipo === 'Outro' ? '' : 'hidden'}><label for="tipoOutro">Qual?</label><input id="tipoOutro" value="${esc(v?.tipoOutro || '')}"></div>
     <label for="dur">Duração</label><select id="dur">${[[30, '30 min'], [45, '45 min'], [60, '1 hora'], [90, '1h30'], [120, '2 horas']].map(([d, t]) => `<option value="${d}" ${(v?.duracao || st.duracao || 60) == d ? 'selected' : ''}>${t}</option>`).join('')}</select>
     <label for="local">Local</label><input id="local" placeholder="Endereço da visita" value="${esc(v?.local || '')}">
     <label for="obsv">Observações sobre a visita</label><textarea id="obsv" style="min-height:70px" placeholder="Ex.: queixa principal, levar bomba extratora...">${esc(v?.obs || '')}</textarea>
@@ -577,12 +632,13 @@ async function telaAgendar(visitId, q) {
     if (c && !inicial) $('#local').value = c.mae.endereco || '';
     $('#bbx').innerHTML = bs.length > 1 ? `<label>Bebê(s) atendido(s)</label><div class="chips">${bs.map(b => `<label><input type="checkbox" value="${b.id}" ${!v?.bebeIds?.length || v.bebeIds.includes(b.id) ? 'checked' : ''}>${esc(b.nome || 'Bebê')}</label>`).join('')}</div>` : '';
   };
+  $('#tipoAt').onchange = () => { $('#tipoOutroBox').hidden = $('#tipoAt').value !== 'Outro'; };
   $('#cli').onchange = () => atualizaBebes(false); atualizaBebes(!!v); if (!v && sel && !$('#local').value) atualizaBebes(false);
   $('#salvar').onclick = async () => {
     const clientId = $('#cli').value, data = $('#data').value, hora = $('#hora').value;
     if (!clientId || !data || !hora) return toast('Escolha cliente, dia e horário');
     const bebeIds = $$('#bbx input:checked').map(i => i.value);
-    const nv = { ...(v || { id: uid(), status: 'agendada', fotos: [], registro: {}, criadoEm: new Date().toISOString(), seq: 0 }), clientId, bebeIds, data, hora, duracao: +$('#dur').value, local: $('#local').value.trim(), obs: $('#obsv').value.trim() };
+    const nv = { ...(v || { id: uid(), status: 'agendada', fotos: [], registro: {}, criadoEm: new Date().toISOString(), seq: 0 }), clientId, bebeIds, data, hora, tipo: $('#tipoAt').value, tipoOutro: $('#tipoAt').value === 'Outro' ? $('#tipoOutro').value.trim() : '', duracao: +$('#dur').value, local: $('#local').value.trim(), obs: $('#obsv').value.trim() };
     if (v && (v.data !== data || v.hora !== hora)) nv.seq = (v.seq || 0) + 1;
     await DB.put('visits', nv); toast(v ? 'Visita atualizada' : 'Visita agendada');
     history.replaceState(null, '', `#/visita/${nv.id}?agenda=1`); route();
@@ -643,12 +699,12 @@ async function telaVisita(id, q) {
   $('#app').innerHTML = `${q.get('agenda') ? painelAgenda(v, c, true) : ''}
     <a class="item" href="#/cliente/${c?.id}"><div class="avatar">${esc(iniciais(c?.mae.nome))}</div><div class="grow"><b>${esc(c?.mae.nome || 'Cliente removida')}</b>
       <div class="sub">${bs.map(b => esc(b.nome) + (b.nascimento ? ' · ' + idade(b.nascimento, v.data) : '')).join(' | ') || 'Ver perfil'}</div></div><span style="color:var(--mu)">›</span></a>
-    <div class="card"><h2>Visita ${tag(v)}</h2><dl class="kv"><dt>Data</dt><dd>${fmtLong(v.data)}</dd><dt>Horário</dt><dd>${v.hora} · ${v.duracao || 60} min</dd>${v.local ? `<dt>Local</dt><dd>${esc(v.local)}</dd>` : ''}${v.obs ? `<dt>Obs.</dt><dd>${esc(v.obs)}</dd>` : ''}</dl></div>
+    <div class="card"><h2>Visita ${tag(v)}</h2><dl class="kv"><dt>Data</dt><dd>${fmtLong(v.data)}</dd><dt>Horário</dt><dd>${v.hora} · ${v.duracao || 60} min</dd>${tipoDe(v) ? `<dt>Tipo</dt><dd>${esc(tipoDe(v))}</dd>` : ''}${v.local ? `<dt>Local</dt><dd>${esc(v.local)}</dd>` : ''}${v.obs ? `<dt>Obs.</dt><dd>${esc(v.obs)}</dd>` : ''}</dl></div>
     ${v.status === 'cancelada' ? '' : reg ? `
     <div class="card"><h2>Registro <a href="#/registro/${v.id}">Editar</a></h2>
       ${r.descricao ? `<div class="sub">Descrição do atendimento</div><p style="margin:2px 0 10px;white-space:pre-wrap">${esc(r.descricao)}</p>` : ''}
       ${r.estadoMae ? `<div class="sub">Condição da mãe</div><p style="margin:2px 0 10px;white-space:pre-wrap">${esc(r.estadoMae)}</p>` : ''}
-      <div class="sub">Laser</div><p style="margin:2px 0 10px">${r.laser ? 'Sim' + (r.laserObs ? ' · ' + esc(r.laserObs) : '') : 'Não'}</p>
+      <div class="sub">Laser</div><p style="margin:2px 0 10px">${esc(textoLaser(r))}</p>
       ${bs.some(b => r.pesos?.[b.id]) ? `<div class="sub">Peso</div><p style="margin:2px 0 10px">${bs.filter(b => r.pesos?.[b.id]).map(b => esc(b.nome) + ': ' + r.pesos[b.id] + ' g').join(' · ')}</p>` : ''}
       ${r.orientacoes ? `<div class="sub">Orientações</div><p style="margin:2px 0 10px;white-space:pre-wrap">${esc(r.orientacoes)}</p>` : ''}
       ${r.obsAdicionais ? `<div class="sub">Observações adicionais</div><p style="margin:2px 0 10px;white-space:pre-wrap">${esc(r.obsAdicionais)}</p>` : ''}
@@ -689,7 +745,8 @@ async function telaRegistro(id) {
       ${bs.some(b => b.nascimento) ? `<div id="pesoBox" ${temPeso ? '' : 'hidden'}><div class="row" style="flex-wrap:wrap">${bs.map(b => `<div style="flex:1 1 140px"><label for="peso_${b.id}">Peso ${bs.length > 1 ? 'de ' + esc(b.nome) : 'do bebê'} hoje (g)</label><input id="peso_${b.id}" data-peso="${b.id}" type="number" inputmode="numeric" value="${esc(r.pesos?.[b.id])}"></div>`).join('')}</div></div>
       ${temPeso ? '' : '<button type="button" class="btn ghost sm" id="pesoBtn" style="margin-top:10px">＋ Registrar peso do bebê (opcional)</button>'}` : ''}
       <label class="toggle" for="laser"><b>Foi feito laser?</b><input type="checkbox" id="laser" ${r.laser ? 'checked' : ''}></label>
-      <div id="laserBox" ${r.laser ? '' : 'hidden'}><label for="laserObs">Detalhes do laser (região, dose, sessões)</label><input id="laserObs" value="${esc(r.laserObs)}"></div>
+      <div id="laserBox" ${r.laser ? '' : 'hidden'}><span class="lbl">Região</span><div class="chips" id="laserReg">${REGIOES_LASER.map(o => `<label><input type="checkbox" value="${o}" ${(r.laserRegiao || '').split('; ').includes(o) ? 'checked' : ''}>${o}</label>`).join('')}</div>
+        <label for="laserObs">Dose, pontos e observações</label><input id="laserObs" placeholder="Ex.: 3 pontos, 2 J por ponto" value="${esc(r.laserObs)}"></div>
       <label for="orient">Orientações para a cliente</label><textarea id="orient" style="min-height:80px" placeholder="Aparece no PDF enviado para a cliente">${esc(r.orientacoes)}</textarea>
       <label for="obsa">Observações adicionais</label><textarea id="obsa" style="min-height:70px">${esc(r.obsAdicionais)}</textarea>
       <label>Fotos</label>
@@ -700,7 +757,7 @@ async function telaRegistro(id) {
     </div>`;
   let fotos = [...(v.fotos || [])];
   $('#pesoBtn') && ($('#pesoBtn').onclick = () => { $('#pesoBox').hidden = false; $('#pesoBtn').remove(); $('[data-peso]').focus(); });
-  const coletar = () => ({ descricao: $('#desc').value.trim(), estadoMae: $('#mae').value.trim(), laser: $('#laser').checked, laserObs: $('#laserObs').value.trim(), orientacoes: $('#orient').value.trim(), obsAdicionais: $('#obsa').value.trim(), pesos: Object.fromEntries($$('[data-peso]').map(i => [i.dataset.peso, i.value.trim()]).filter(x => x[1])) });
+  const coletar = () => ({ descricao: $('#desc').value.trim(), estadoMae: $('#mae').value.trim(), laser: $('#laser').checked, laserRegiao: $('#laser').checked ? $$('#laserReg input:checked').map(i => i.value).join('; ') : '', laserObs: $('#laser').checked ? $('#laserObs').value.trim() : '', orientacoes: $('#orient').value.trim(), obsAdicionais: $('#obsa').value.trim(), pesos: Object.fromEntries($$('[data-peso]').map(i => [i.dataset.peso, i.value.trim()]).filter(x => x[1])) });
   let timer;
   const salvarRascunho = async () => {
     clearTimeout(timer); timer = null; if (!$('#desc')) return; const reg = coletar();
@@ -712,6 +769,7 @@ async function telaRegistro(id) {
   const agendar = () => { clearTimeout(timer); const el = $('#savestate'); if (el) el.textContent = 'Salvando…'; timer = setTimeout(salvarRascunho, 700); };
   $('#app').addEventListener('input', e => { if (!e.target.matches('#cam,#gal')) agendar(); });
   $('#laser').addEventListener('change', e => { $('#laserBox').hidden = !e.target.checked; });
+  $('#laserReg').addEventListener('change', () => agendar());
   const renderFotos = () => { $('#fotos').innerHTML = fotos.map((f, i) => `<div><img src="${f.src}" alt="Foto ${i + 1}"><button data-i="${i}" aria-label="Remover foto">×</button></div>`).join('');
     $$('#fotos button').forEach(b => b.onclick = () => { if (confirm('Remover esta foto?')) { fotos.splice(+b.dataset.i, 1); renderFotos(); salvarRascunho(); } }); };
   renderFotos();
@@ -767,8 +825,8 @@ function textoRelatorio(v, c, st) {
   if (bs.length) L.push('');
   if (r.descricao) L.push('O que fizemos:', r.descricao, '');
   if (r.orientacoes) L.push('Orientações:', r.orientacoes, '');
-  if (r.laser) L.push('Laserterapia: realizada' + (r.laserObs ? ' (' + r.laserObs + ')' : ''), '');
-  L.push('Com carinho,', st.nome || '', 'CALMA | Consultoria em Aleitamento Materno', [st.whats, st.email].filter(Boolean).join(' · '));
+  if (r.laser) L.push('Laserterapia: realizada' + textoLaser(r).slice(3), '');
+  L.push('Com carinho,', [st.nome, coren(st)].filter(Boolean).join(' · '), 'CALMA | Consultoria em Aleitamento Materno', [st.whats, st.email].filter(Boolean).join(' · '));
   return L.join('\n');
 }
 async function enviarEmail(v, c) {
@@ -808,6 +866,7 @@ function gerarPDF(v, c, st) {
   y = H - 30 - lh - 12; text('CALMA | CONSULTORIA EM ALEITAMENTO MATERNO', 6.5, true, VERDE, M);
   y = H - 52; text('Resumo do atendimento', 18, true, VERDE, M + lw + 22);
   y -= 20; text(fmtLong(v.data).replace(/^./, m => m.toUpperCase()) + ` de ${parseD(v.data).getFullYear()} · ${v.hora}`, 11, false, CINZA, M + lw + 22);
+  if (tipoDe(v)) { y -= 16; text(tipoDe(v), 11, true, TX, M + lw + 22); }
   y = H - 30 - lh - 30;
   // Identificação
   ops.push(`${rgb('eef3e9')} rg ${M} ${(y - 18 - 16 * Math.max(1, bs.length)).toFixed(1)} ${W - 2 * M} ${(26 + 16 * Math.max(1, bs.length)).toFixed(1)} re f`);
@@ -816,7 +875,7 @@ function gerarPDF(v, c, st) {
   y -= 22;
   if (r.descricao) { secao('O que fizemos'); para(r.descricao); }
   if (r.estadoMae) { secao('Como você estava'); para(r.estadoMae); }
-  if (r.laser) { secao('Laserterapia'); para('Realizada' + (r.laserObs ? ' · ' + r.laserObs : '')); }
+  if (r.laser) { secao('Laserterapia'); para('Realizada' + textoLaser(r).slice(3)); }
   if (r.orientacoes) { secao('Orientações'); para(r.orientacoes); }
   if (r.obsAdicionais) { secao('Observações'); para(r.obsAdicionais); }
   if (v.fotos?.length) {
@@ -828,7 +887,8 @@ function gerarPDF(v, c, st) {
       rowH = Math.max(rowH, dh); col++; if (col === 2 || i === v.fotos.length - 1) { y -= rowH + 12; col = 0; }
     });
   }
-  need(60); y -= 30; text('Com carinho,', 11, false, CINZA); y -= 16; text(st.nome || 'CALMA', 12, true, VERDE);
+  need(80); y -= 30; text('Com carinho,', 11, false, CINZA); y -= 18; text(st.nome || 'CALMA', 13, true, VERDE);
+  if (coren(st)) { y -= 15; text(coren(st), 11, true, TX); }
   if (st.titulo) { y -= 14; text(st.titulo, 10, false, CINZA); }
   pages.push(ops);
   // Montagem
@@ -838,7 +898,7 @@ function gerarPDF(v, c, st) {
   const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
   const imgIds = imgs.map(f => { const bin = atob(f.src.split(',')[1]); return add({ dict: `<< /Type /XObject /Subtype /Image /Width ${f.w} /Height ${f.h} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bin.length} >>`, bin }); });
   const xo = imgIds.map((id, i) => `/Im${i + 1} ${id} 0 R`).join(' ');
-  const contato = ['CALMA | Consultoria em Aleitamento Materno', st.whats, st.email].filter(Boolean).join('  ·  ');
+  const contato = ['CALMA | Consultoria em Aleitamento Materno', [st.nome, coren(st)].filter(Boolean).join(' · '), st.whats].filter(Boolean).join('  ·  ');
   const kids = pages.map((p, i) => {
     const s = p.join('\n') + `\n${rgb('dde5d6')} RG 0.6 w ${M} 40 m ${W - M} 40 l S\nBT ${rgb(CINZA)} rg /F1 8 Tf ${M} 27 Td (${enc(contato)}) Tj ET\nBT ${rgb(CINZA)} rg /F1 8 Tf ${W - M - 24} 27 Td (${i + 1}/${pages.length}) Tj ET`;
     const cont = add({ dict: `<< /Length ${s.length} >>`, bin: s });
@@ -930,9 +990,10 @@ async function telaImportar(data) {
   shell('Importar cadastro', { tab: 'clientes' });
   let p; try { p = b64d(data); } catch { $('#app').innerHTML = '<div class="empty">Link de cadastro inválido ou incompleto.</div>'; return; }
   if (p.bebe && !p.bebes) p.bebes = [p.bebe];
-  // Evita duplicidade: procura pela cliente do link, depois CPF, e-mail, e nome + nascimento.
-  const cs = await DB.all('clients'); const cpf = (p.mae.cpf || '').replace(/\D/g, '');
-  const existente = (p.c && cs.find(x => x.id === p.c)) || (cpf && cs.find(x => (x.mae.cpf || '').replace(/\D/g, '') === cpf))
+  // Evita duplicidade: procura pela cliente do link, depois e-mail, e nome + nascimento.
+  delete p.mae.cpf;
+  const cs = await DB.all('clients');
+  const existente = (p.c && cs.find(x => x.id === p.c))
     || (p.mae.email && cs.find(x => norm(x.mae.email) === norm(p.mae.email))) || cs.find(x => norm(x.mae.nome) === norm(p.mae.nome) && (!p.mae.nascimento || x.mae.nascimento === p.mae.nascimento));
   const limpa = o => Object.fromEntries(Object.entries(o || {}).filter(([, v]) => v));
   let merged;
@@ -951,7 +1012,10 @@ async function telaConfig() {
   const st = await getSettings();
   $('#app').innerHTML = `<div class="card"><h2>Dados da consultora</h2>
     <label for="sn">Seu nome (aparece no PDF)</label><input id="sn" value="${esc(st.nome)}">
-    <label for="st">Título / registro profissional</label><input id="st" value="${esc(st.titulo)}">
+    <label for="st">Título profissional</label><select id="st">${['Consultora em aleitamento materno', 'Enfermeira consultora em aleitamento materno', 'Consultora internacional em lactação (IBCLC)', 'Enfermeira obstetra', ...(st.titulo && !['Consultora em aleitamento materno', 'Enfermeira consultora em aleitamento materno', 'Consultora internacional em lactação (IBCLC)', 'Enfermeira obstetra'].includes(st.titulo) ? [st.titulo] : [])].map(o => `<option ${o === st.titulo ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>
+    <div class="fgrid"><div class="f third"><label for="scu">COREN (UF)</label><select id="scu">${UFS.map(u => `<option value="${u}" ${u === (st.corenUF || '') ? 'selected' : ''}>${u || 'UF'}</option>`).join('')}</select></div>
+    <div class="f" style="flex:2 1 60%"><label for="scn">Número do COREN</label><input id="scn" inputmode="numeric" placeholder="Ex.: 123456" value="${esc(st.corenNum || '')}"></div></div>
+    <div class="hint">Aparece no PDF junto com seu nome, ex.: "${esc(st.nome || 'Sandra')} · COREN-MG 123456".</div>
     <label for="sw">Seu WhatsApp (recebe as fichas de cadastro)</label><input id="sw" type="tel" value="${esc(st.whats)}" oninput="this.value=maskTel(this.value)">
     <label for="se">Seu e-mail</label><input id="se" type="email" value="${esc(st.email)}">
     <button class="btn full" id="salvar">Salvar</button></div>
@@ -967,7 +1031,7 @@ async function telaConfig() {
     <div class="card"><h2>Demonstração</h2><p class="sub" style="margin-top:0">${st.demo ? 'O app está com dados fictícios para teste.' : 'Carregue dados fictícios para testar o app.'}</p>
     <div class="btns">${st.demo ? '<button class="btn danger" id="limpar">Apagar dados fictícios e começar</button>' : '<button class="btn ghost" id="demo">Carregar dados fictícios</button>'}</div></div>
     <div class="card"><h2>Instalar no celular</h2><p class="sub" style="margin:0">iPhone: no Safari, toque em Compartilhar e depois em "Adicionar à Tela de Início". Android: no Chrome, menu ⋮ e "Instalar app".</p></div>`;
-  $('#salvar').onclick = async () => { await DB.put('settings', { ...(await getSettings()), nome: $('#sn').value.trim(), titulo: $('#st').value.trim(), whats: $('#sw').value.trim(), email: $('#se').value.trim() }); toast('Dados salvos'); };
+  $('#salvar').onclick = async () => { await DB.put('settings', { ...(await getSettings()), nome: $('#sn').value.trim(), titulo: $('#st').value, corenUF: $('#scu').value, corenNum: $('#scn').value.trim(), whats: $('#sw').value.trim(), email: $('#se').value.trim() }); toast('Dados salvos'); };
   $('#sd').onchange = async e => { await DB.put('settings', { ...(await getSettings()), duracao: +e.target.value }); toast('Preferência salva'); };
   $('#sb').onchange = async e => { await DB.put('settings', { ...(await getSettings()), bloqueioMin: +e.target.value }); toast('Preferência salva'); };
   $('#bloquear').onclick = () => { sess.set(0); route(); };
@@ -983,12 +1047,26 @@ async function telaConfig() {
     const f = e.target.files[0]; if (!f) return; try {
       const d = JSON.parse(await f.text()); if (d.app !== 'calma') throw new Error('o arquivo não é um backup do CALMA');
       if (!confirm(`Restaurar ${d.clients.length} clientes e ${d.visits.length} visitas?`)) return;
-      for (const s of ['clients', 'visits']) for (const x of d[s] || []) await DB.put(s, migrar(s, x));
+      for (const s of ['clients', 'visits']) for (const x of d[s] || []) { migrar(s, x); if (s === 'clients') migrarCliente(x); await DB.put(s, x); }
       toast('Backup restaurado'); telaConfig();
     } catch (err) { alert('Não foi possível restaurar: ' + err.message); }
   };
   $('#limpar') && ($('#limpar').onclick = async () => { if (!confirm('Apagar todas as clientes e visitas fictícias?')) return; await DB.clear('clients'); await DB.clear('visits'); const s0 = await getSettings(); await DB.put('settings', { ...s0, demo: false, seeded: true, whats: s0.whats === '(11) 98765-4321' ? '' : s0.whats, email: s0.email === 'contato@calma.exemplo' ? '' : s0.email }); toast('Pronto! Comece cadastrando sua primeira cliente.'); location.hash = '#/inicio'; });
   $('#demo') && ($('#demo').onclick = async () => { await seed(); toast('Dados fictícios carregados'); location.hash = '#/inicio'; });
+}
+function migrarCliente(c) {
+  const m = c.mae || {}; const antes = JSON.stringify(c);
+  delete m.cpf;
+  const NEG = /^(n(ã|a)o|nenhuma?|nada|sem|n\/a|-+)\.?$/i;
+  const sn = (k, kq) => { const v = (m[k] || '').trim(); if (!v || v === 'Sim' || v === 'Não') return; if (NEG.test(v)) m[k] = 'Não'; else { m[kq] = v; m[k] = 'Sim'; } };
+  sn('alergias', 'alergiasQuais'); sn('medicamentos', 'medicamentosQuais');
+  if (m.restricao && !['Sim', 'Não'].includes(m.restricao)) { if (NEG.test(m.restricao)) m.restricao = 'Não'; else { m.restricaoOutra = m.restricao; m.restricaoQuais = 'Outra'; m.restricao = 'Sim'; } }
+  const ops = (k) => CAMPOS_MAE.find(d => d[0] === k)[2].multi;
+  if (m.mamas && !m.mamas.split('; ').every(x => ops('mamas').includes(x))) { m.mamasOutro = m.mamas; m.mamas = 'Outro'; }
+  if (m.redeApoioQuem && !m.redeApoioQuem.split('; ').every(x => ops('redeApoioQuem').includes(x))) { m.redeApoioOutro = m.redeApoioQuem; m.redeApoioQuem = 'Outro'; }
+  if (m.avos === 'Sim') m.avos = 'Sim, maternos e paternos'; if (m.avos === 'Não') m.avos = 'Não / moram longe';
+  (c.bebes || []).forEach(b => { if (b.parto === 'Normal') b.parto = 'Vaginal (normal)'; if (/^\d+$/.test(b.ig || '')) b.ig = +b.ig < 28 ? 'Menos de 28 semanas' : `${Math.min(+b.ig, 42)} semanas`; });
+  return JSON.stringify(c) !== antes;
 }
 function migrar(store, x) { if (store === 'clients' && x.bebe && !x.bebes) { x.bebes = x.bebe.nome || x.bebe.nascimento ? [{ id: uid(), ...x.bebe }] : []; delete x.bebe; } return x; }
 
@@ -1005,14 +1083,14 @@ async function seed() {
   const T = today(), D = n => addD(T, n);
   const st = await getSettings();
   const cl = [
-    { mae: { nome: 'Mariana Alves Ribeiro', nascimento: '1991-04-12', cpf: '529.982.247-25', profissao: 'Arquiteta', telefone: '(11) 98123-4567', email: 'mariana.exemplo@email.com', endereco: 'Rua das Acácias, 120, ap. 43 - Vila Mariana, São Paulo', parceiroNome: 'Thiago', parceiroIdade: '36', parceiroProfissao: 'Advogado', dpp: D(-21), risco: 'Baixo risco', gestacoes: '1', partos: '1', abortos: '0', prenatalista: 'Dra. Renata Lopes', maternidade: 'Hospital São Luiz', pediatra: 'Dra. Carla Mota', alergias: 'Não', restricao: 'Não', medicamentos: 'Não', mamas: 'Aumento de volume e mamilos mais escuros', avos: 'Sim', redeApoio: 'Sim', redeApoioQuem: 'Mãe e irmã' }, bebes: [{ nome: 'Helena', nascimento: D(-18), peso: '3240', sexo: 'Feminino', parto: 'Normal', ig: '39' }] },
+    { mae: { nome: 'Mariana Alves Ribeiro', nascimento: '1991-04-12', profissao: 'Arquiteta', telefone: '(11) 98123-4567', email: 'mariana.exemplo@email.com', endereco: 'Rua das Acácias, 120, ap. 43 - Vila Mariana, São Paulo', parceiroNome: 'Thiago', parceiroIdade: '36', parceiroProfissao: 'Advogado', dpp: D(-21), risco: 'Baixo risco', gestacoes: '1', partos: '1', abortos: '0', prenatalista: 'Dra. Renata Lopes', maternidade: 'Hospital São Luiz', pediatra: 'Dra. Carla Mota', alergias: 'Sim', alergiasQuais: 'Dipirona', restricao: 'Não', medicamentos: 'Não', cirurgiaMamas: 'Não', mamas: 'Aumento de volume; Aréolas mais escuras', avos: 'Sim, só maternos', redeApoio: 'Sim', redeApoioQuem: 'Parceiro(a); Mãe; Irmã(o)' }, bebes: [{ nome: 'Helena', nascimento: D(-18), peso: '3240', sexo: 'Feminino', parto: 'Normal', ig: '39', apgar1: '8', apgar5: '9' }] },
     { mae: { nome: 'Juliana Costa Mendes', nascimento: '1988-09-30', telefone: '(11) 99654-3210', email: 'juliana.exemplo@email.com', endereco: 'Av. Brigadeiro Faria Lima, 1500 - Pinheiros, São Paulo' }, bebes: [{ nome: 'Theo', nascimento: D(-9), peso: '2890', sexo: 'Masculino', parto: 'Cesárea', ig: '38' }, { nome: 'Lara', nascimento: D(-9), peso: '2710', sexo: 'Feminino', parto: 'Cesárea', ig: '38', obs: 'Gêmeos' }] },
     { mae: { nome: 'Camila Ferreira Santos', nascimento: '1994-01-22', telefone: '(11) 97777-8888', email: 'camila.exemplo@email.com', endereco: 'Rua Harmonia, 455 - Vila Madalena, São Paulo' }, bebes: [{ nome: 'Miguel', nascimento: D(-41), peso: '3560', sexo: 'Masculino', parto: 'Normal', ig: '40' }] },
     { mae: { nome: 'Beatriz Oliveira Lima', nascimento: '1990-06-05', telefone: '(11) 96543-2100', endereco: 'Rua Pamplona, 980 - Jardim Paulista, São Paulo' }, bebes: [{ nome: 'Alice', nascimento: D(-5), peso: '3100', sexo: 'Feminino', parto: 'Normal', ig: '39' }] },
     { mae: { nome: 'Fernanda Rocha Dias', nascimento: '1986-11-17', telefone: '(11) 95432-1987', email: 'fernanda.exemplo@email.com', endereco: 'Rua Tuim, 77 - Moema, São Paulo' }, bebes: [{ nome: 'Gael', nascimento: D(-72), peso: '3320', sexo: 'Masculino', parto: 'Cesárea', ig: '39' }, { nome: 'Sofia', nascimento: '2023-03-08', peso: '3050', sexo: 'Feminino', parto: 'Normal', ig: '40' }] },
     { mae: { nome: 'Patrícia Nunes Araújo', nascimento: '1996-02-28', telefone: '(11) 94321-0099', endereco: 'Rua Cardeal Arcoverde, 2100 - Pinheiros, São Paulo' }, bebes: [{ nome: 'Benício', nascimento: D(-2), peso: '3410', sexo: 'Masculino', parto: 'Normal', ig: '41' }], origem: 'autocadastro' },
-    { mae: { nome: 'Larissa Moura Teixeira', nascimento: '1990-08-14', profissao: 'Enfermeira', telefone: '(11) 93210-5544', email: 'larissa.exemplo@email.com', endereco: 'Rua Joaquim Floriano, 300, ap. 81 - Itaim Bibi, São Paulo', parceiroNome: 'Rafael', parceiroIdade: '36', parceiroProfissao: 'Engenheiro', dpp: D(46), risco: 'Baixo risco', gestacoes: '2', partos: '0', abortos: '1', prenatalista: 'Dra. Helena Prado / Enf. Júlia Campos', maternidade: 'Hospital Santa Clara', pediatra: 'Dr. Paulo Reis', alergias: 'Não', restricao: 'Não', medicamentos: 'Sertralina', mamas: 'Maior volume', avos: 'Sim', redeApoio: 'Sim', redeApoioQuem: 'Mãe e sogra' }, bebes: [{ nome: 'Arthur', sexo: 'Masculino' }] },
-  ].map((c, i) => ({ id: 'demo-c' + i, criadoEm: new Date().toISOString(), origem: c.origem || 'consultora', aceiteLGPD: i % 2 ? new Date().toISOString() : undefined, ...c, bebes: c.bebes.map((b, j) => ({ id: `demo-b${i}-${j}`, ...b })) }));
+    { mae: { nome: 'Larissa Moura Teixeira', nascimento: '1990-08-14', profissao: 'Enfermeira', telefone: '(11) 93210-5544', email: 'larissa.exemplo@email.com', endereco: 'Rua Joaquim Floriano, 300, ap. 81 - Itaim Bibi, São Paulo', parceiroNome: 'Rafael', parceiroIdade: '36', parceiroProfissao: 'Engenheiro', dpp: D(46), risco: 'Baixo risco', gestacoes: '2', partos: '0', abortos: '1', prenatalista: 'Dra. Helena Prado / Enf. Júlia Campos', maternidade: 'Hospital Santa Clara', pediatra: 'Dr. Paulo Reis', alergias: 'Não', restricao: 'Sim', restricaoQuais: 'Lactose', medicamentos: 'Sim', medicamentosQuais: 'Sertralina 50 mg', cirurgiaMamas: 'Mamoplastia de aumento (prótese)', mamas: 'Aumento de volume; Mais sensibilidade ou dor', avos: 'Sim, maternos e paternos', redeApoio: 'Sim', redeApoioQuem: 'Parceiro(a); Mãe; Sogra' }, bebes: [{ nome: 'Arthur', sexo: 'Masculino' }] },
+  ].map((c, i) => { migrarCliente(c); return c; }).map((c, i) => ({ id: 'demo-c' + i, criadoEm: new Date().toISOString(), origem: c.origem || 'consultora', aceiteLGPD: i % 2 ? new Date().toISOString() : undefined, ...c, bebes: c.bebes.map((b, j) => ({ id: `demo-b${i}-${j}`, ...b })) }));
   const V = (i, ci, dia, hora, extra = {}) => ({ id: 'demo-v' + i, clientId: cl[ci].id, bebeIds: [], data: D(dia), hora, duracao: 60, local: cl[ci].mae.endereco, obs: '', status: 'agendada', fotos: [], registro: {}, seq: 0, ...extra });
   const feito = (desc, mae, ori, laser, extra = {}) => ({ status: 'realizada', registradoEm: new Date().toISOString(), registro: { descricao: desc, estadoMae: mae, orientacoes: ori, laser: !!laser, laserObs: laser || '', obsAdicionais: '', pesos: {} , ...extra } });
   const vs = [
@@ -1042,7 +1120,7 @@ async function seed() {
 }
 
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)) navigator.serviceWorker.register('sw.js').catch(() => { });
-DB.all('clients').then(cs => Promise.all(cs.filter(c => c.bebe && !c.bebes).map(c => DB.put('clients', migrar('clients', c))))).finally(route);
+DB.all('clients').then(cs => Promise.all(cs.map(c => { const velho = c.bebe && !c.bebes; migrar('clients', c); return (migrarCliente(c) || velho) ? DB.put('clients', c) : null; }))).finally(route);
 </script>
 </body>
 </html>

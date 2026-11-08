@@ -16,7 +16,7 @@ Início · Clientes · Agenda · Atendimentos · Ajustes. O perfil da mãe é o 
 
 ## Fluxos do MVP
 1. Cadastrar cliente (mãe + um ou mais bebês)
-2. Gerar link de cadastro para a cliente (WhatsApp), com revisão e sem duplicar fichas (busca por cliente do link, CPF, e-mail e nome)
+2. Gerar link de cadastro para a cliente (WhatsApp), com revisão e sem duplicar fichas (busca por cliente do link, e-mail e nome + data de nascimento)
 3. Perfil da cliente com linha do tempo (datas, descrições, fotos)
 4. Agendar visita e ver na agenda (dia, semana, mês, com status)
 5. Abrir a visita e tocar em "Registrar atendimento" (rascunho salvo automaticamente)
@@ -25,7 +25,10 @@ Início · Clientes · Agenda · Atendimentos · Ajustes. O perfil da mãe é o 
 8. PDF com logo e fotos para WhatsApp, ou e-mail
 
 ## Ficha da cliente
-Dados da mãe, parceiro(a), gestação e saúde (DPP, pré-natal, nº de gestações/partos/abortos, pré-natalista, maternidade, pediatra, alergias, restrição alimentar, medicamentos, mamas na gestação), rede de apoio e bebês. Gestantes aparecem com a DPP; o bebê pode ter só o nome escolhido. O peso do bebê no registro é opcional.
+Dados da mãe, parceiro(a), gestação e saúde (DPP, pré-natal, nº de gestações/partos/abortos, pré-natalista, maternidade, pediatra, perguntas Sim/Não de alergia, medicamento e restrição alimentar que abrem o detalhe só quando a resposta é Sim, cirurgia nas mamas, mamas na gestação), rede de apoio e bebês (com idade gestacional, tipo de parto e Apgar de 1º e 5º minuto, de 0 a 10). A idade da mãe e do bebê é calculada pela data de nascimento e se atualiza sozinha. Não pedimos CPF.
+
+## COREN no PDF
+Em Ajustes ficam o nome, o título e o COREN (UF + número). O PDF assina com nome, COREN e título, e o rodapé repete nome e COREN. Gestantes aparecem com a DPP; o bebê pode ter só o nome escolhido. O peso do bebê no registro é opcional.
 
 ## Para incluir novos campos
 No `index.html`, edite `SECOES_MAE` e `CAMPOS_BEBE` (uma linha por campo). Formulário, ficha pública e perfil se ajustam sozinhos.
