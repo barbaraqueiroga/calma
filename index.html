@@ -180,7 +180,7 @@ const DB = {
    copiados para a nuvem da consultora, aparecendo no iPhone e no iPad.
    Sem internet tudo funciona; as mudanças sobem quando a conexão volta.
    ===================================================================== */
-const FIREBASE_CONFIG = null;
+const FIREBASE_CONFIG = { apiKey: "AIzaSyC4QwW1OBOTGIFCf5lTVkHcgUWS2dg4mJk", authDomain: "calma-1fc57.firebaseapp.com", projectId: "calma-1fc57", storageBucket: "calma-1fc57.firebasestorage.app", messagingSenderId: "33615613088", appId: "1:33615613088:web:5f43201cac44f3f2d58dc5" };
 const SO_NESTE_APARELHO = ['id', 'senhaHash', 'senhaSal', 'bloqueioMin', 'seeded', 'demo', 'ultimoBackup'];
 const Nuvem = (() => {
   let F, fs, auth, user = null, carregando = null, subs = [], estado = 'off';
