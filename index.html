@@ -78,8 +78,10 @@ input:focus,select:focus,textarea:focus{outline:3px solid var(--p2);border-color
 .note{font-size:13px;color:#5b5440;background:#fbf6e6;border:1px solid #efe3bf;border-radius:12px;padding:10px 12px;margin-top:10px}
 .note.green{background:var(--p2);border-color:#cfdcc4;color:var(--p-dk)}
 .err{color:var(--ca);font-size:13px;margin-top:4px}
-#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#1d2a20;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:30;max-width:90vw;text-align:center}
+#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#1d2a20;color:#fff;padding:10px 16px;border-radius:20px;font-size:14px;opacity:0;transition:.25s;pointer-events:none;z-index:60;max-width:90vw;text-align:center}
 #toast.show{opacity:1}
+body:has(.sheet) #toast{bottom:auto;top:90px}
+.btn.ok{background:var(--p);color:#fff;border-color:var(--p)}
 .public nav,.public #cfg{display:none}
 .brandline{color:var(--p);font-weight:700;font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px}
 .hello{display:flex;align-items:center;gap:12px;margin:2px 2px 14px}.hello h2{margin:0;font-size:22px}.hello p{margin:0;color:var(--mu);font-size:14px}
@@ -1161,7 +1163,13 @@ async function compartilharLinkCadastro(c) {
     <button class="btn sec full" id="shCopy">Copiar mensagem</button>
     <button class="btn ghost full" id="shX">Fechar</button></div>`;
   $('#shX').onclick = fechar;
-  $('#shCopy').onclick = async () => { try { await navigator.clipboard.writeText(msg); toast('Mensagem copiada! Cole na conversa da cliente.'); } catch { const t = $('#shMsg'); t.focus(); t.select(); toast('Toque e segure no texto para copiar'); } };
+  $('#shCopy').onclick = async () => {
+    const bt = $('#shCopy');
+    try { await navigator.clipboard.writeText(msg); }
+    catch { const t = $('#shMsg'); t.focus(); t.select(); let ok = false; try { ok = document.execCommand('copy'); } catch { } if (!ok) return toast('Toque e segure no texto para copiar'); }
+    bt.textContent = '✓ Mensagem copiada!'; bt.classList.add('ok'); toast('Mensagem copiada! Agora cole na conversa da cliente.');
+    clearTimeout(bt.h); bt.h = setTimeout(() => { bt.textContent = 'Copiar mensagem'; bt.classList.remove('ok'); }, 3000);
+  };
 }
 function telaCadastroPublico(q) {
   document.body.classList.add('public'); $('#lock').hidden = true; $('#back').hidden = true; $('.mark').hidden = false;
