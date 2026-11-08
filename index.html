@@ -108,6 +108,9 @@ details.ficha{margin-bottom:12px}details.ficha summary{cursor:pointer;background
 #lock form{width:100%;max-width:340px}#lock h2{margin:0 0 4px;text-align:center;font-size:20px;color:var(--p-dk)}#lock p{margin:0 0 10px;text-align:center;color:var(--mu);font-size:14px}
 #lock .link{background:none;border:0;color:var(--mu);font-size:13px;margin-top:18px;text-decoration:underline;cursor:pointer;width:100%}
 .demo{background:var(--dr-bg);color:var(--dr);font-size:12px;text-align:center;padding:6px;border-radius:10px;margin-bottom:10px}
+.sheet{position:fixed;inset:0;background:rgba(20,35,24,.45);z-index:40;display:flex;align-items:flex-end;justify-content:center}
+.sheet-in{background:var(--bg);width:100%;max-width:560px;border-radius:20px 20px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom));max-height:90vh;overflow:auto}
+.sheet-in h3{margin:0 0 4px;color:var(--p-dk)}
 .pubhead{text-align:center;margin:8px 0 16px}.pubhead img{width:220px}.pubhead div{color:var(--p);font-weight:700;font-size:11px;letter-spacing:.12em;text-transform:uppercase;margin-top:4px}
 </style>
 </head>
@@ -301,7 +304,8 @@ async function telaLock() {
     ${criar ? '<input id="s2" type="password" placeholder="Repita a senha" style="margin-top:8px" autocomplete="new-password" required>' : ''}
     <div class="err" id="lerr"></div>
     <button class="btn full" type="submit">${criar ? 'Criar senha e entrar' : 'Entrar'}</button>
-    ${criar ? '' : '<button class="link" type="button" id="esqueci">Esqueci a senha</button>'}</form>`;
+    ${criar ? '' : '<button class="link" type="button" id="esqueci">Esqueci a senha</button>'}
+    ${navigator.standalone === false ? '<div class="note" style="margin-top:16px">No iPhone, use o app pelo ícone da tela de início (Safari → Compartilhar → Adicionar à Tela de Início). Os dados guardados aqui no Safari ficam separados do app.</div>' : ''}</form>`;
   setTimeout(() => $('#s1').focus(), 50);
   $('#lf').onsubmit = async e => {
     e.preventDefault(); const s1 = $('#s1').value;
@@ -338,6 +342,8 @@ async function route() {
   if (h.startsWith('#cadastro')) return telaCadastroPublico(new URLSearchParams(h.split('?')[1] || ''));
   document.body.classList.remove('public');
   const st = await getSettings();
+  const iosNavegador = navigator.standalone === false;
+  if (h.startsWith('#importar=') && (iosNavegador || !st.senhaHash)) return telaImportarFora(h);
   if (!st.senhaHash || !sess.get()) { $('#app').innerHTML = ''; return telaLock(); }
   $('#lock').hidden = true;
   pedirArmazenamentoPersistente();
@@ -356,6 +362,7 @@ async function route() {
       case 'registro': return await telaRegistro(id);
       case 'atendimentos': return await telaAtendimentos();
       case 'config': return await telaConfig();
+      case 'receber': return await telaReceber();
       default: return await telaInicio();
     }
   } catch (e) { console.error(e); $('#app').innerHTML = `<div class="empty">Algo deu errado: ${esc(e.message)}</div>`; }
@@ -397,7 +404,7 @@ async function telaClientes() {
   const { cs, vs } = await carregar(); cs.sort((a, b) => a.mae.nome.localeCompare(b.mae.nome, 'pt-BR'));
   const ultima = {}; vs.filter(v => v.status === 'realizada').forEach(v => { if (!ultima[v.clientId] || v.data > ultima[v.clientId]) ultima[v.clientId] = v.data; });
   $('#app').innerHTML = `<input id="busca" type="search" placeholder="Buscar mãe ou bebê..." style="margin-bottom:10px">
-    <div class="btns" style="margin:0 0 12px"><a class="btn sec" href="#/ficha">＋ Nova cliente</a><button class="btn ghost" id="linkNovo">🔗 Link de cadastro</button></div>
+    <div class="btns" style="margin:0 0 12px"><a class="btn sec" href="#/ficha">＋ Nova cliente</a><button class="btn ghost" id="linkNovo">🔗 Link de cadastro</button><a class="btn ghost" href="#/receber">📥 Receber ficha</a></div>
     <div id="lista"></div>`;
   const render = f => {
     const l = cs.filter(c => !f || norm(c.mae.nome + ' ' + bebesDe(c).map(b => b.nome).join(' ')).includes(norm(f)));
@@ -854,13 +861,30 @@ function gerarPDF(v, c, st) {
    ===================================================================== */
 async function compartilharLinkCadastro(c) {
   const st = await getSettings();
-  if (!st.whats) { toast('Informe seu WhatsApp em Ajustes primeiro'); location.hash = '#/config'; return; }
+  const box = document.createElement('div'); box.className = 'sheet'; document.body.appendChild(box);
+  const fechar = () => box.remove();
+  box.onclick = e => { if (e.target === box) fechar(); };
+  if (!st.whats) {
+    box.innerHTML = `<div class="sheet-in"><h3>Seu WhatsApp</h3><p class="sub">A ficha que a cliente preencher volta para você por este número.</p>
+      <input id="shW" type="tel" inputmode="tel" placeholder="(11) 90000-0000" oninput="this.value=maskTel(this.value)">
+      <button class="btn full" id="shOk">Continuar</button><button class="btn ghost full" id="shX">Cancelar</button></div>`;
+    $('#shX').onclick = fechar;
+    $('#shOk').onclick = async () => { const w = $('#shW').value.trim(); if (w.replace(/\D/g, '').length < 10) return toast('Digite o WhatsApp com DDD'); await DB.put('settings', { ...(await getSettings()), whats: w }); fechar(); compartilharLinkCadastro(c); };
+    setTimeout(() => $('#shW').focus(), 50); return;
+  }
   const p = new URLSearchParams({ w: telWa(st.whats) }); if (st.nome) p.set('n', st.nome);
   if (c) { p.set('c', c.id); p.set('d', b64e({ mae: { nome: c.mae.nome }, bebes: bebesDe(c).map(b => ({ id: b.id, nome: b.nome, nascimento: b.nascimento })) })); }
   const link = `${baseURL()}#cadastro?${p}`;
   const msg = `Olá${c ? ', ' + primeiro(c.mae.nome) : ''}! Para agilizar nosso atendimento, preencha sua ficha neste link: ${link}`;
-  if (navigator.share) { try { await navigator.share({ text: msg }); return; } catch (e) { if (e.name === 'AbortError') return; } }
-  try { await navigator.clipboard.writeText(msg); toast('Link copiado! Cole na conversa da cliente.'); } catch { prompt('Copie o link:', link); }
+  const tel = c?.mae.telefone ? telWa(c.mae.telefone) : '';
+  box.innerHTML = `<div class="sheet-in"><h3>Link de cadastro${c ? ' para ' + esc(primeiro(c.mae.nome)) : ''}</h3>
+    <p class="sub">Envie para a cliente. Quando ela terminar, a ficha chega no seu WhatsApp e você toca em <b>Clientes → Receber ficha</b>.</p>
+    <textarea id="shMsg" readonly style="min-height:110px;font-size:14px">${esc(msg)}</textarea>
+    <a class="btn full" href="https://wa.me/${tel}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Enviar pelo WhatsApp${c?.mae.telefone ? '' : ' (escolher contato)'}</a>
+    <button class="btn sec full" id="shCopy">Copiar mensagem</button>
+    <button class="btn ghost full" id="shX">Fechar</button></div>`;
+  $('#shX').onclick = fechar;
+  $('#shCopy').onclick = async () => { try { await navigator.clipboard.writeText(msg); toast('Mensagem copiada! Cole na conversa da cliente.'); } catch { const t = $('#shMsg'); t.focus(); t.select(); toast('Toque e segure no texto para copiar'); } };
 }
 function telaCadastroPublico(q) {
   document.body.classList.add('public'); $('#lock').hidden = true; $('#back').hidden = true; $('.mark').hidden = false;
@@ -879,9 +903,28 @@ function telaCadastroPublico(q) {
     if (!$('#aceite').checked) return toast('Marque a autorização para continuar');
     const payload = { v: 2, c: q.get('c') || null, ...f, aceite: new Date().toISOString() };
     const link = `${baseURL()}#importar=${b64e(payload)}`;
-    const texto = `Olá! Preenchi minha ficha de cadastro (${f.mae.nome}). Toque no link para importar no app CALMA: ${link}`;
+    const texto = `Olá! Preenchi minha ficha de cadastro (${f.mae.nome}).\n\nPara a consultora: copie esta mensagem inteira e, no app CALMA, toque em Clientes → Receber ficha.\n\n${link}`;
     location.href = `https://wa.me/${q.get('w') || ''}?text=${encodeURIComponent(texto)}`;
   };
+}
+function telaImportarFora(h) {
+  document.body.classList.add('public'); $('#lock').hidden = true; $('#back').hidden = true; $('.mark').hidden = false;
+  $('#title').textContent = 'Ficha recebida';
+  const txt = location.href;
+  $('#app').innerHTML = `<div class="card"><b>Esta ficha precisa ser aberta dentro do app CALMA.</b>
+    <ol style="margin:8px 0 0;padding-left:20px;font-size:15px"><li>Toque em <b>Copiar ficha</b>.</li><li>Abra o app CALMA pelo ícone da tela de início.</li><li>Vá em <b>Clientes → Receber ficha</b> e toque em <b>Colar</b>.</li></ol>
+    <textarea id="fxTxt" readonly style="margin-top:10px;min-height:70px;font-size:12px">${esc(txt)}</textarea>
+    <button class="btn full" id="fxCopy">Copiar ficha</button></div>`;
+  $('#fxCopy').onclick = async () => { try { await navigator.clipboard.writeText(txt); toast('Copiado! Agora abra o app CALMA.'); } catch { $('#fxTxt').select(); toast('Toque e segure no texto para copiar'); } };
+}
+async function telaReceber() {
+  shell('Receber ficha', { back: true, tab: 'clientes' });
+  $('#app').innerHTML = `<div class="card"><b>Como receber a ficha da cliente</b>
+    <ol style="margin:8px 0 0;padding-left:20px;font-size:15px"><li>Abra a mensagem que a cliente mandou no WhatsApp.</li><li>Toque e segure a mensagem e escolha <b>Copiar</b>.</li><li>Volte aqui e toque em <b>Colar</b>.</li></ol></div>
+    <div class="card"><label for="rcTxt" style="margin-top:0">Mensagem da cliente</label><textarea id="rcTxt" placeholder="Cole aqui a mensagem do WhatsApp"></textarea>
+    <div class="btns"><button class="btn sec" id="rcPaste">📋 Colar</button><button class="btn" id="rcOk">Importar ficha</button></div></div>`;
+  $('#rcPaste').onclick = async () => { try { $('#rcTxt').value = await navigator.clipboard.readText(); } catch { $('#rcTxt').focus(); toast('Toque e segure no campo e escolha Colar'); } };
+  $('#rcOk').onclick = () => { const m = $('#rcTxt').value.match(/importar=([A-Za-z0-9_-]+)/); if (!m) return toast('Não encontrei a ficha nesta mensagem. Copie a mensagem inteira.'); telaImportar(m[1]); };
 }
 async function telaImportar(data) {
   shell('Importar cadastro', { tab: 'clientes' });
