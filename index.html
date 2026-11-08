@@ -371,6 +371,7 @@ const CAMPOS_BEBE = [
   ['apgar5', 'Apgar 5º minuto', NUM(0, 10), false, 'half'],
   ['obs', 'Observações (amamentação, intercorrências)', 'textarea'],
 ];
+const LOCAIS = ['Casa da cliente', 'Online', 'Hospital', 'Outro endereço'];
 const TIPOS_ATEND = ['', 'Consulta pré-natal de amamentação', 'Primeira visita pós-parto', 'Retorno', 'Laserterapia', 'Avaliação de frênulo lingual', 'Ordenha e retorno ao trabalho', 'Introdução de fórmula / relactação', 'Desmame', 'Atendimento online', 'Outro'];
 const REGIOES_LASER = ['Mamilo direito', 'Mamilo esquerdo', 'Aréola direita', 'Aréola esquerda', 'Mama direita', 'Mama esquerda', 'Outra'];
 const UFS = ['', 'AC', 'AL', 'AM', 'AP', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MG', 'MS', 'MT', 'PA', 'PB', 'PE', 'PI', 'PR', 'RJ', 'RN', 'RO', 'RR', 'RS', 'SC', 'SE', 'SP', 'TO'];
@@ -545,6 +546,17 @@ async function route() {
 }
 addEventListener('hashchange', route);
 
+function iconeBebe(b) {
+  const menina = b.sexo === 'Feminino', menino = b.sexo === 'Masculino';
+  const laco = menina ? '<g fill="#e57fa3" stroke="#c95c84" stroke-width=".8"><path d="M20 9 L11 4.5 Q9.5 9 11 13.5 Z"/><path d="M20 9 L29 4.5 Q30.5 9 29 13.5 Z"/><circle cx="20" cy="9" r="2.6"/></g>' : '';
+  const cabelo = menino ? '<path d="M15 12 Q18 7.5 22 10 Q20 12.5 17.5 12.8" fill="none" stroke="#7a5236" stroke-width="1.8" stroke-linecap="round"/>' : !menina ? '<path d="M18 11.5 Q20 8 22.5 10.5" fill="none" stroke="#7a5236" stroke-width="1.8" stroke-linecap="round"/>' : '';
+  return `<svg viewBox="0 0 40 40" width="34" height="34" role="img" aria-label="${menina ? 'Bebê menina' : menino ? 'Bebê menino' : 'Bebê'}">
+    <circle cx="20" cy="22" r="13" fill="#f7d9c4"/><circle cx="7.5" cy="22" r="2.6" fill="#f2c8ad"/><circle cx="32.5" cy="22" r="2.6" fill="#f2c8ad"/>
+    ${cabelo}<circle cx="15.5" cy="21.5" r="1.5" fill="#3b2a20"/><circle cx="24.5" cy="21.5" r="1.5" fill="#3b2a20"/>
+    <circle cx="12.8" cy="26" r="2" fill="${menina ? '#f4a9be' : '#f3b9a3'}" opacity=".8"/><circle cx="27.2" cy="26" r="2" fill="${menina ? '#f4a9be' : '#f3b9a3'}" opacity=".8"/>
+    <path d="M17 27.5 Q20 30 23 27.5" fill="none" stroke="#a5624a" stroke-width="1.4" stroke-linecap="round"/>${laco}</svg>`;
+}
+
 /* ===================== Início ===================== */
 function cartaoEntrada() {
   const e = Nuvem.entrada(); if (!e.length) return '';
@@ -626,7 +638,7 @@ async function telaCliente(id) {
       <div class="btns tight" style="margin-top:8px">${m.telefone ? `<a class="btn sm ghost" href="https://wa.me/${telWa(m.telefone)}" target="_blank" rel="noopener">WhatsApp</a>` : ''}${m.telefone ? `<a class="btn sm ghost" href="tel:${m.telefone.replace(/\D/g, '')}">Ligar</a>` : ''}${m.endereco ? `<a class="btn sm ghost" href="https://maps.google.com/?q=${encodeURIComponent(m.endereco)}" target="_blank" rel="noopener">Mapa</a>` : ''}</div></div></div>
     <div class="btns" style="margin:0 0 12px"><a class="btn" href="#/agendar?cliente=${id}">📅 Agendar visita</a><a class="btn sec" href="#/ficha/${id}">✏️ Editar ficha</a></div>
     <div class="card"><h2>Bebês <a href="#/ficha/${id}?novoBebe=1">＋ Adicionar</a></h2>
-      ${bs.length ? bs.map(b => `<div class="baby"><span class="ic">${b.sexo === 'Masculino' ? '👶🏻' : b.sexo === 'Feminino' ? '👶🏻' : '👶🏻'}</span><div class="grow"><b>${esc(b.nome || 'Bebê sem nome')}</b>
+      ${bs.length ? bs.map(b => `<div class="baby"><span class="ic">${iconeBebe(b)}</span><div class="grow"><b>${esc(b.nome || 'Bebê sem nome')}</b>
         <div class="sub">${[b.nascimento ? `${fmtD(b.nascimento)} (${idade(b.nascimento)})` : 'Ainda não nasceu' + (m.dpp ? ' · DPP ' + fmtD(m.dpp) : ''), b.peso && `${b.peso} g ao nascer`, b.ig, b.parto, (b.apgar1 || b.apgar5) && `Apgar ${b.apgar1 || '–'}/${b.apgar5 || '–'}`].filter(Boolean).join(' · ')}</div>${b.obs ? `<div class="sub">${esc(b.obs)}</div>` : ''}</div></div>`).join('') : '<div class="sub">Nenhum bebê cadastrado.</div>'}</div>
     <div class="sec-title">Visitas agendadas (${agendadas.length})</div>
     ${agendadas.length ? agendadas.map(v => itemVisita(v, c)).join('') : `<div class="card sub" style="text-align:center">Nenhuma visita agendada. <a href="#/agendar?cliente=${id}" style="color:var(--p);font-weight:650">Agendar</a></div>`}
@@ -775,21 +787,30 @@ async function telaAgendar(visitId, q) {
     <label for="tipoAt">Tipo de atendimento</label><select id="tipoAt">${[...TIPOS_ATEND, ...(v?.tipo && !TIPOS_ATEND.includes(v.tipo) ? [v.tipo] : [])].map(o => `<option value="${esc(o)}" ${o === (v?.tipo || '') ? 'selected' : ''}>${o || 'Selecione'}</option>`).join('')}</select>
     <div id="tipoOutroBox" ${v?.tipo === 'Outro' ? '' : 'hidden'}><label for="tipoOutro">Qual?</label><input id="tipoOutro" value="${esc(v?.tipoOutro || '')}"></div>
     <label for="dur">Duração</label><select id="dur">${[[30, '30 min'], [45, '45 min'], [60, '1 hora'], [90, '1h30'], [120, '2 horas']].map(([d, t]) => `<option value="${d}" ${(v?.duracao || st.duracao || 60) == d ? 'selected' : ''}>${t}</option>`).join('')}</select>
-    <label for="local">Local</label><input id="local" placeholder="Endereço da visita" value="${esc(v?.local || '')}">
+    <label for="localTipo">Local</label><select id="localTipo">${LOCAIS.map(o => `<option ${o === (v?.localTipo || (v?.local ? (v.local === 'Online' ? 'Online' : /^Hospital/.test(v.local) ? 'Hospital' : 'Casa da cliente') : 'Casa da cliente')) ? 'selected' : ''}>${o}</option>`).join('')}</select>
+    <div id="localBox"><label for="local" id="localLbl">Endereço</label><input id="local" placeholder="Endereço da visita" value="${esc(v?.local === 'Online' ? '' : (v?.local || '').replace(/^Hospital(:\s*|$)/, ''))}"></div>
     <label for="obsv">Observações sobre a visita</label><textarea id="obsv" style="min-height:70px" placeholder="Ex.: queixa principal, levar bomba extratora...">${esc(v?.obs || '')}</textarea>
     <button class="btn full" id="salvar">${v ? 'Salvar alterações' : 'Agendar visita'}</button></div>`;
   const atualizaBebes = (inicial) => {
     const c = cs.find(x => x.id === $('#cli').value); const bs = bebesDe(c);
-    if (c && !inicial) $('#local').value = c.mae.endereco || '';
+    if (c && !inicial) ajustaLocal(true);
     $('#bbx').innerHTML = bs.length > 1 ? `<label>Bebê(s) atendido(s)</label><div class="chips">${bs.map(b => `<label><input type="checkbox" value="${b.id}" ${!v?.bebeIds?.length || v.bebeIds.includes(b.id) ? 'checked' : ''}>${esc(b.nome || 'Bebê')}</label>`).join('')}</div>` : '';
   };
+  const ajustaLocal = preencher => {
+    const t = $('#localTipo').value, c = cs.find(x => x.id === $('#cli').value);
+    $('#localBox').hidden = t === 'Online';
+    $('#localLbl').textContent = t === 'Hospital' ? 'Hospital / maternidade' : t === 'Casa da cliente' ? 'Endereço da cliente' : 'Endereço';
+    $('#local').placeholder = t === 'Hospital' ? 'Nome do hospital ou maternidade' : 'Endereço da visita';
+    if (preencher) $('#local').value = t === 'Casa da cliente' ? c?.mae.endereco || '' : t === 'Hospital' ? c?.mae.maternidade || '' : '';
+  };
+  $('#localTipo').onchange = () => ajustaLocal(true); ajustaLocal(false);
   $('#tipoAt').onchange = () => { $('#tipoOutroBox').hidden = $('#tipoAt').value !== 'Outro'; };
   $('#cli').onchange = () => atualizaBebes(false); atualizaBebes(!!v); if (!v && sel && !$('#local').value) atualizaBebes(false);
   $('#salvar').onclick = async () => {
     const clientId = $('#cli').value, data = $('#data').value, hora = $('#hora').value;
     if (!clientId || !data || !hora) return toast('Escolha cliente, dia e horário');
     const bebeIds = $$('#bbx input:checked').map(i => i.value);
-    const nv = { ...(v || { id: uid(), status: 'agendada', fotos: [], registro: {}, criadoEm: new Date().toISOString(), seq: 0 }), clientId, bebeIds, data, hora, tipo: $('#tipoAt').value, tipoOutro: $('#tipoAt').value === 'Outro' ? $('#tipoOutro').value.trim() : '', duracao: +$('#dur').value, local: $('#local').value.trim(), obs: $('#obsv').value.trim() };
+    const nv = { ...(v || { id: uid(), status: 'agendada', fotos: [], registro: {}, criadoEm: new Date().toISOString(), seq: 0 }), clientId, bebeIds, data, hora, tipo: $('#tipoAt').value, tipoOutro: $('#tipoAt').value === 'Outro' ? $('#tipoOutro').value.trim() : '', duracao: +$('#dur').value, localTipo: $('#localTipo').value, local: $('#localTipo').value === 'Online' ? 'Online' : $('#localTipo').value === 'Hospital' ? (n => !n ? 'Hospital' : /hospital|maternidade/i.test(n) ? n : 'Hospital: ' + n)($('#local').value.trim().replace(/^Hospital:\s*/, '')) : $('#local').value.trim(), obs: $('#obsv').value.trim() };
     if (v && (v.data !== data || v.hora !== hora)) nv.seq = (v.seq || 0) + 1;
     await DB.put('visits', nv); toast(v ? 'Visita atualizada' : 'Visita agendada');
     history.replaceState(null, '', `#/visita/${nv.id}?agenda=1`); route();
