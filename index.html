@@ -269,10 +269,19 @@ const Nuvem = (() => {
   async function conectar(u) {
     subs.forEach(f => f()); subs = []; user = u; entrada = [];
     if (!u) { estado = 'off'; avisar(); return; }
+    if (u.email) localStorage.setItem('calma-nuvem', u.email);
     estado = 'sincronizando'; avisar();
     try { await subirLocais(); } catch (e) { erro(e); }
     for (const s of ['settings', 'clients', 'visits']) subs.push(F.onSnapshot(col(s), { includeMetadataChanges: true }, snap => receber(s, snap), erro));
     subs.push(F.onSnapshot(col('entrada'), snap => { entrada = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.aceite || '').localeCompare(a.aceite || '')); avisar(); telaMudou(); }, erro));
+  }
+  let ouvindo = false;
+  function ouvirConta() {
+    if (ouvindo) return; ouvindo = true;
+    F.onAuthStateChanged(auth, u => {
+      if (!u && localStorage.getItem('calma-nuvem')) { localStorage.removeItem('calma-nuvem'); conectar(null); route(); return; }
+      if ((u?.uid || '') !== (user?.uid || '')) conectar(u);
+    });
   }
   const MSG = { 'auth/invalid-credential': 'E-mail ou senha incorretos.', 'auth/wrong-password': 'E-mail ou senha incorretos.', 'auth/user-not-found': 'Não existe conta com este e-mail. Toque em "Criar conta".', 'auth/email-already-in-use': 'Já existe uma conta com este e-mail. Toque em "Entrar".', 'auth/weak-password': 'A senha precisa ter pelo menos 6 caracteres.', 'auth/invalid-email': 'Confira o e-mail digitado.', 'auth/network-request-failed': 'Sem internet. Conecte-se e tente de novo.', 'auth/too-many-requests': 'Muitas tentativas. Espere alguns minutos.' };
   const traduz = e => new Error(MSG[e.code] || e.message.replace('sem internet', 'Sem internet. Conecte-se e tente de novo.'));
@@ -282,18 +291,22 @@ const Nuvem = (() => {
     entrada: () => entrada, ouvir: f => { ouvintes.add(f); return () => ouvintes.delete(f); },
     enviar: (s, v, a) => { try { enviar(s, v, a); } catch (e) { erro(e); } },
     apagar: (s, id, a) => { try { apagar(s, id, a); } catch (e) { erro(e); } },
+    contaSalva: () => localStorage.getItem('calma-nuvem') || '',
     async iniciar() {
       if (!FIREBASE_CONFIG || !localStorage.getItem('calma-nuvem')) return;
-      try { await sdk(); F.onAuthStateChanged(auth, u => { if ((u?.uid || '') !== (user?.uid || '')) conectar(u); }); } catch (e) { erro(e); }
+      try { await sdk(); ouvirConta(); } catch (e) { erro(e); }
     },
     async entrar(email, senha, criar) {
       try {
-        await sdk(); localStorage.setItem('calma-nuvem', '1');
+        await sdk();
         const r = await (criar ? F.createUserWithEmailAndPassword : F.signInWithEmailAndPassword)(auth, email, senha);
-        F.onAuthStateChanged(auth, u => { if ((u?.uid || '') !== (user?.uid || '')) conectar(u); });
-        await conectar(r.user);
+        const ant = localStorage.getItem('calma-ultimo-uid');
+        if (ant && ant !== r.user.uid) { await DBL.clear('clients'); await DBL.clear('visits'); const st = (await DBL.get('settings', 'main')) || {}; await DBL.put('settings', Object.fromEntries(Object.entries(st).filter(([k]) => SO_NESTE_APARELHO.includes(k)))); }
+        localStorage.setItem('calma-ultimo-uid', r.user.uid); localStorage.setItem('calma-nuvem', r.user.email || email);
+        ouvirConta(); await conectar(r.user);
       } catch (e) { throw traduz(e); }
     },
+    async confere(senha) { try { await sdk(); await F.signInWithEmailAndPassword(auth, localStorage.getItem('calma-nuvem'), senha); return true; } catch (e) { throw traduz(e); } },
     async esqueci(email) { try { await sdk(); await F.sendPasswordResetEmail(auth, email); } catch (e) { throw traduz(e); } },
     async sair() { if (!auth) return; await conectar(null); localStorage.removeItem('calma-nuvem'); try { await F.signOut(auth); } catch (e) { erro(e); } },
     async apagarEntrada(id) { if (user && id) try { await F.deleteDoc(ref('entrada', id)); } catch (e) { erro(e); } },
@@ -471,12 +484,37 @@ document.addEventListener('visibilitychange', async () => {
   const st = await getSettings();
   if (st.senhaHash && escondidoEm && Date.now() - escondidoEm > (st.bloqueioMin || 5) * 6e4) { sess.set(0); route(); }
 });
+function telaConta(modo = 'entrar') {
+  const L = $('#lock'); L.hidden = false; const criar = modo === 'criar';
+  L.innerHTML = `<img src="${LOGO_FULL}" alt="CALMA"><div class="tagline">CALMA | Consultoria em Aleitamento Materno</div><form id="cf">
+    <h2>${criar ? 'Criar sua conta' : 'Entrar na sua conta'}</h2>
+    <p>${criar ? 'Com a conta, seus dados ficam salvos na nuvem e aparecem no iPhone e no iPad.' : 'Use o mesmo e-mail e senha em todos os seus aparelhos.'}</p>
+    <input id="ce" type="email" inputmode="email" placeholder="E-mail" autocomplete="username" required>
+    <input id="cs" type="password" placeholder="${criar ? 'Crie uma senha (mín. 6 caracteres)' : 'Senha'}" style="margin-top:8px" autocomplete="${criar ? 'new-password' : 'current-password'}" required>
+    ${criar ? '<input id="cs2" type="password" placeholder="Repita a senha" style="margin-top:8px" autocomplete="new-password" required>' : ''}
+    <div class="err" id="cerr"></div>
+    <button class="btn full" type="submit" id="cok">${criar ? 'Criar conta' : 'Entrar'}</button>
+    <button class="btn ghost full" type="button" id="ctroca" style="margin-top:8px">${criar ? 'Já tenho conta: entrar' : 'Primeira vez? Criar conta'}</button>
+    ${criar ? '' : '<button class="link" type="button" id="cesq">Esqueci a senha</button>'}
+    ${navigator.standalone === false ? '<div class="note" style="margin-top:16px">No iPhone, use o app pelo ícone da tela de início (Safari → Compartilhar → Adicionar à Tela de Início).</div>' : ''}</form>`;
+  setTimeout(() => $('#ce').focus(), 50);
+  $('#ctroca').onclick = () => telaConta(criar ? 'entrar' : 'criar');
+  $('#cesq') && ($('#cesq').onclick = async () => { const em = $('#ce').value.trim(); if (!em) { $('#cerr').textContent = 'Digite seu e-mail e toque de novo em "Esqueci a senha".'; return $('#ce').focus(); } try { await Nuvem.esqueci(em); $('#cerr').textContent = ''; alert('Enviamos um e-mail para ' + em + ' com o link para criar uma nova senha.'); } catch (e) { $('#cerr').textContent = e.message; } });
+  $('#cf').onsubmit = async e => {
+    e.preventDefault(); const em = $('#ce').value.trim(), se = $('#cs').value;
+    if (criar && se.length < 6) return $('#cerr').textContent = 'A senha precisa ter pelo menos 6 caracteres.';
+    if (criar && se !== $('#cs2').value) return $('#cerr').textContent = 'As senhas não conferem.';
+    $('#cok').disabled = true; $('#cok').textContent = criar ? 'Criando conta…' : 'Entrando…'; $('#cerr').textContent = '';
+    try { await Nuvem.entrar(em, se, criar); L.hidden = true; L.innerHTML = ''; route(); }
+    catch (err) { $('#cerr').textContent = err.message; $('#cok').disabled = false; $('#cok').textContent = criar ? 'Criar conta' : 'Entrar'; }
+  };
+}
 async function telaLock() {
   const st = await getSettings(); const L = $('#lock'); L.hidden = false;
   const criar = !st.senhaHash;
   L.innerHTML = `<img src="${LOGO_FULL}" alt="CALMA"><div class="tagline">CALMA | Consultoria em Aleitamento Materno</div><form id="lf">
-    <h2>${criar ? 'Bem-vinda!' : 'Olá' + (st.nome ? ', ' + esc(primeiro(st.nome)) : '') + '!'}</h2>
-    <p>${criar ? 'Crie uma senha para proteger os dados das suas clientes.' : 'Digite sua senha para entrar.'}</p>
+    <h2>${criar ? (Nuvem.contaSalva() ? 'Senha deste aparelho' : 'Bem-vinda!') : 'Olá' + (st.nome ? ', ' + esc(primeiro(st.nome)) : '') + '!'}</h2>
+    <p>${criar ? (Nuvem.contaSalva() ? 'Agora crie uma senha rápida para este aparelho. Ela bloqueia o app quando você o deixa de lado.' : 'Crie uma senha para proteger os dados das suas clientes.') : 'Digite sua senha para entrar.'}</p>
     <input id="s1" type="password" placeholder="${criar ? 'Nova senha (mín. 4 caracteres)' : 'Senha'}" autocomplete="${criar ? 'new-password' : 'current-password'}" required>
     ${criar ? '<input id="s2" type="password" placeholder="Repita a senha" style="margin-top:8px" autocomplete="new-password" required>' : ''}
     <div class="err" id="lerr"></div>
@@ -489,11 +527,17 @@ async function telaLock() {
     if (criar) {
       if (s1.length < 4) return $('#lerr').textContent = 'Use pelo menos 4 caracteres.';
       if (s1 !== $('#s2').value) return $('#lerr').textContent = 'As senhas não conferem.';
-      const sal = uid(); await DB.put('settings', { ...st, senhaSal: sal, senhaHash: await hashSenha(s1, sal) });
+      const sal = uid(), hash = await hashSenha(s1, sal); await DBL.put('settings', { ...((await DBL.get('settings', 'main')) || { id: 'main' }), senhaSal: sal, senhaHash: hash });
     } else if (await hashSenha(s1, st.senhaSal) !== st.senhaHash) { $('#lerr').textContent = 'Senha incorreta.'; $('#s1').select(); return; }
     sess.set(Date.now()); L.hidden = true; L.innerHTML = ''; route();
   };
   $('#esqueci') && ($('#esqueci').onclick = async () => {
+    if (Nuvem.contaSalva()) {
+      const s = prompt(`Para criar uma nova senha rápida, digite a senha da sua conta (${Nuvem.contaSalva()}):`); if (!s) return;
+      try { await Nuvem.confere(s); const st2 = await getSettings(); delete st2.senhaHash; delete st2.senhaSal; await DBL.put('settings', st2); toast('Crie a nova senha rápida'); telaLock(); }
+      catch (e) { alert(e.message); }
+      return;
+    }
     if (!confirm('Por segurança, não é possível recuperar a senha. Para criar outra, é preciso APAGAR todos os dados deste aparelho (restaure depois pelo backup). Continuar?')) return;
     if (prompt('Digite APAGAR para confirmar') !== 'APAGAR') return;
     await Nuvem.sair(); for (const s of ['clients', 'visits', 'settings']) await DB.clear(s); sess.set(0); telaLock();
@@ -521,6 +565,7 @@ async function route() {
   const st = await getSettings();
   const iosNavegador = navigator.standalone === false;
   if (h.startsWith('#importar=') && (iosNavegador || !st.senhaHash)) return telaImportarFora(h);
+  if (Nuvem.configurado() && !Nuvem.contaSalva()) { $('#app').innerHTML = ''; return telaConta(); }
   if (!st.senhaHash || !sess.get()) { $('#app').innerHTML = ''; return telaLock(); }
   $('#lock').hidden = true;
   pedirArmazenamentoPersistente();
@@ -582,7 +627,7 @@ async function telaInicio() {
   const boasVindas = !cs.length && !st.demo ? `<div class="card"><b>Bem-vinda ao CALMA! 🌿</b><div class="sub" style="margin-top:4px">Comece completando seus dados${st.whats ? '' : ' (o WhatsApp é usado no link de cadastro das clientes)'} e cadastrando sua primeira cliente.</div>
       <div class="btns">${st.nome && st.whats ? '' : '<a class="btn sec" href="#/config">Meus dados</a>'}<a class="btn" href="#/ficha">＋ Primeira cliente</a></div>
       <button class="btn ghost full" id="demoStart">Explorar com dados de exemplo</button>
-      ${Nuvem.configurado() && !Nuvem.logado() ? '<div class="sub" style="text-align:center;margin-top:10px">Já usa o CALMA em outro aparelho? <a href="#/config" style="color:var(--p);font-weight:650">Entre na sua conta</a> para trazer os dados.</div>' : ''}</div>` : '';
+</div>` : '';
   $('#app').innerHTML = `${st.demo ? '<div class="demo">Modo demonstração: dados fictícios. Apague em Ajustes quando for usar de verdade.</div>' : ''}${cartaoEntrada()}${boasVindas}${avisoBackup}
     <div class="hello"><div class="grow"><div class="brandline">CALMA | Consultoria em Aleitamento Materno</div><h2>${hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite'}${st.nome ? ', ' + esc(primeiro(st.nome)) : ''}!</h2><p>${DIAS[d.getDay()]}, ${d.getDate()} de ${MESES[d.getMonth()]}</p></div></div>
     <div class="quick"><a class="btn" href="#/agendar"><span>📅</span>Agendar visita</a><a class="btn sec" href="#/ficha"><span>＋</span>Nova cliente</a></div>
@@ -1198,7 +1243,7 @@ function cartaoNuvem() {
       <p style="margin:0">${e === 'ok' ? '✅ Tudo salvo na nuvem.' : e === 'offline' ? '📴 Sem internet agora. As mudanças sobem quando a conexão voltar.' : '🔄 Sincronizando…'}</p>
       <p class="sub">Conta: <b>${esc(Nuvem.email())}</b>. Entre com esta mesma conta no outro aparelho para ver os mesmos dados.</p>
       <button class="btn ghost full" id="nvSair">Sair da conta neste aparelho</button>`;
-    $('#nvSair').onclick = async () => { if (!confirm('Sair da conta? Os dados continuam neste aparelho, mas param de sincronizar.')) return; await Nuvem.sair(); toast('Você saiu da conta'); cartaoNuvem(); };
+    $('#nvSair').onclick = async () => { if (!confirm('Sair da conta neste aparelho? Para usar o app de novo, será preciso entrar com e-mail e senha.')) return; await Nuvem.sair(); toast('Você saiu da conta'); route(); };
     return;
   }
   el.innerHTML = `<h2>Usar no iPhone e no iPad</h2>
