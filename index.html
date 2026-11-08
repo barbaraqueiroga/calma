@@ -147,7 +147,7 @@ const LOGO_PDF = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgM
    Toda leitura/escrita passa por DB, então trocar por um servidor
    (ex.: Supabase) depois exige mudar só este bloco.
    ===================================================================== */
-const DB = (() => {
+const DBL = (() => {
   let dbp;
   const open = () => dbp || (dbp = new Promise((res, rej) => {
     const r = indexedDB.open('calma', 2);
@@ -161,6 +161,146 @@ const DB = (() => {
     put: (s, v) => tx(s, 'readwrite', st => st.put(v)),
     del: (s, id) => tx(s, 'readwrite', st => st.delete(id)),
     clear: s => tx(s, 'readwrite', st => st.clear()),
+  };
+})();
+const DB = {
+  all: s => DBL.all(s),
+  get: (s, id) => DBL.get(s, id),
+  put: async (s, v) => {
+    const antes = s === 'visits' ? await DBL.get(s, v.id) : null;
+    if (s === 'visits') (v.fotos || []).forEach(f => { if (!f.id) f.id = uid(); });
+    const r = await DBL.put(s, v); Nuvem.enviar(s, v, antes); return r;
+  },
+  del: async (s, id) => { const antes = await DBL.get(s, id); const r = await DBL.del(s, id); Nuvem.apagar(s, id, antes); return r; },
+  clear: s => DBL.clear(s),
+};
+
+/* =====================================================================
+   SINCRONIZAÇÃO (Firebase): os dados continuam no aparelho e são
+   copiados para a nuvem da consultora, aparecendo no iPhone e no iPad.
+   Sem internet tudo funciona; as mudanças sobem quando a conexão volta.
+   ===================================================================== */
+const FIREBASE_CONFIG = null;
+const SO_NESTE_APARELHO = ['id', 'senhaHash', 'senhaSal', 'bloqueioMin', 'seeded', 'demo', 'ultimoBackup'];
+const Nuvem = (() => {
+  let F, fs, auth, user = null, carregando = null, subs = [], estado = 'off';
+  let entrada = [];
+  const ouvintes = new Set(); const avisar = () => ouvintes.forEach(f => { try { f(); } catch { } });
+  const sdk = (publico = false) => carregando || (carregando = new Promise((res, rej) => {
+    if (window.CalmaFB) return res();
+    const sc = document.createElement('script'); sc.src = 'firebase.js';
+    sc.onload = res; sc.onerror = () => { carregando = null; sc.remove(); rej(new Error('sem internet')); }; document.head.appendChild(sc);
+  }).then(() => {
+    F = window.CalmaFB; const app = F.initializeApp(FIREBASE_CONFIG);
+    let cache; try { cache = publico ? F.memoryLocalCache() : F.persistentLocalCache({ tabManager: F.persistentMultipleTabManager() }); } catch { cache = F.memoryLocalCache(); }
+    fs = F.initializeFirestore(app, { localCache: cache, ignoreUndefinedProperties: true });
+    if (!publico) auth = F.getAuth(app);
+    if (window.CALMA_EMU) { F.connectFirestoreEmulator(fs, 'localhost', 8080); auth && F.connectAuthEmulator(auth, 'http://localhost:9099', { disableWarnings: true }); }
+  }));
+  const ref = (...p) => F.doc(fs, 'usuarios', user.uid, ...p);
+  const col = c => F.collection(fs, 'usuarios', user.uid, c);
+  const vale = id => user && !String(id).startsWith('demo-');
+  const erro = e => console.warn('nuvem', e && e.message);
+  function paraNuvem(s, v) {
+    if (s === 'settings') return Object.fromEntries(Object.entries(v).filter(([k]) => !SO_NESTE_APARELHO.includes(k)));
+    if (s === 'visits') return { ...v, fotos: (v.fotos || []).map(f => ({ id: f.id, w: f.w || 0, h: f.h || 0 })) };
+    return v;
+  }
+  function enviar(s, v, antes) {
+    if (!vale(v.id)) return;
+    if (s === 'settings') return F.setDoc(ref('settings', 'main'), paraNuvem(s, v), { merge: true }).catch(erro);
+    F.setDoc(ref(s, v.id), paraNuvem(s, v)).catch(erro);
+    if (s === 'visits') {
+      const tinha = new Set((antes?.fotos || []).map(f => f.id)), tem = new Set((v.fotos || []).map(f => f.id));
+      (v.fotos || []).filter(f => !tinha.has(f.id) || !antes).forEach(f => F.setDoc(ref('fotos', f.id), { src: f.src, visita: v.id }).catch(erro));
+      tinha.forEach(id => { if (id && !tem.has(id)) F.deleteDoc(ref('fotos', id)).catch(erro); });
+    }
+  }
+  function apagar(s, id, antes) {
+    if (!vale(id) || s === 'settings') return;
+    F.deleteDoc(ref(s, id)).catch(erro);
+    (antes?.fotos || []).forEach(f => f.id && F.deleteDoc(ref('fotos', f.id)).catch(erro));
+  }
+  let timer;
+  function telaMudou() {
+    clearTimeout(timer); timer = setTimeout(() => {
+      const rota = (location.hash || '#/inicio').slice(2).split(/[/?]/)[0];
+      const editando = ['ficha', 'registro', 'agendar', 'config', 'receber'].includes(rota) || location.hash.startsWith('#importar') || location.hash.startsWith('#cadastro');
+      if (!editando && sess.get() && $('#lock').hidden) route();
+    }, 500);
+  }
+  async function receber(s, snap) {
+    let mudou = false;
+    for (const ch of snap.docChanges()) {
+      if (ch.doc.metadata.hasPendingWrites) continue;
+      const id = ch.doc.id;
+      try {
+        if (s === 'settings') {
+          if (ch.type === 'removed') continue;
+          const loc = (await DBL.get('settings', 'main')) || {};
+          const novo = { ...loc, ...ch.doc.data(), id: 'main' };
+          if (JSON.stringify(novo) !== JSON.stringify({ ...loc, id: 'main' })) { await DBL.put('settings', novo); mudou = true; }
+          continue;
+        }
+        if (ch.type === 'removed') { if (await DBL.get(s, id)) { await DBL.del(s, id); mudou = true; } continue; }
+        const d = ch.doc.data(); const loc = await DBL.get(s, id);
+        if (s === 'visits') {
+          const tem = Object.fromEntries((loc?.fotos || []).filter(f => f.id).map(f => [f.id, f.src]));
+          d.fotos = await Promise.all((d.fotos || []).map(async f => ({ ...f, src: tem[f.id] || (await F.getDoc(ref('fotos', f.id))).data()?.src })));
+          if (d.fotos.some(f => !f.src)) continue; // foto ainda não chegou: tenta de novo na próxima sincronização
+        }
+        if (s === 'clients') migrarCliente(d);
+        if (JSON.stringify(loc) !== JSON.stringify(d)) { await DBL.put(s, d); mudou = true; }
+      } catch (e) { erro(e); }
+    }
+    estado = snap.metadata.fromCache ? 'offline' : 'ok'; avisar();
+    if (mudou) telaMudou();
+  }
+  async function subirLocais() {
+    const chave = 'calma-subiu-' + user.uid; if (localStorage.getItem(chave)) return;
+    for (const s of ['clients', 'visits']) {
+      const naNuvem = new Set((await F.getDocs(col(s))).docs.map(d => d.id));
+      for (const x of await DBL.all(s)) if (!naNuvem.has(x.id)) enviar(s, x, null);
+    }
+    const cfg = await F.getDoc(ref('settings', 'main'));
+    if (!cfg.exists()) { const st = await DBL.get('settings', 'main'); if (st) enviar('settings', st, null); }
+    localStorage.setItem(chave, '1');
+  }
+  async function conectar(u) {
+    subs.forEach(f => f()); subs = []; user = u; entrada = [];
+    if (!u) { estado = 'off'; avisar(); return; }
+    estado = 'sincronizando'; avisar();
+    try { await subirLocais(); } catch (e) { erro(e); }
+    for (const s of ['settings', 'clients', 'visits']) subs.push(F.onSnapshot(col(s), { includeMetadataChanges: true }, snap => receber(s, snap), erro));
+    subs.push(F.onSnapshot(col('entrada'), snap => { entrada = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (b.aceite || '').localeCompare(a.aceite || '')); avisar(); telaMudou(); }, erro));
+  }
+  const MSG = { 'auth/invalid-credential': 'E-mail ou senha incorretos.', 'auth/wrong-password': 'E-mail ou senha incorretos.', 'auth/user-not-found': 'Não existe conta com este e-mail. Toque em "Criar conta".', 'auth/email-already-in-use': 'Já existe uma conta com este e-mail. Toque em "Entrar".', 'auth/weak-password': 'A senha precisa ter pelo menos 6 caracteres.', 'auth/invalid-email': 'Confira o e-mail digitado.', 'auth/network-request-failed': 'Sem internet. Conecte-se e tente de novo.', 'auth/too-many-requests': 'Muitas tentativas. Espere alguns minutos.' };
+  const traduz = e => new Error(MSG[e.code] || e.message.replace('sem internet', 'Sem internet. Conecte-se e tente de novo.'));
+  return {
+    configurado: () => !!FIREBASE_CONFIG,
+    logado: () => !!user, email: () => user?.email || '', uid: () => user?.uid || '', estado: () => estado,
+    entrada: () => entrada, ouvir: f => { ouvintes.add(f); return () => ouvintes.delete(f); },
+    enviar: (s, v, a) => { try { enviar(s, v, a); } catch (e) { erro(e); } },
+    apagar: (s, id, a) => { try { apagar(s, id, a); } catch (e) { erro(e); } },
+    async iniciar() {
+      if (!FIREBASE_CONFIG || !localStorage.getItem('calma-nuvem')) return;
+      try { await sdk(); F.onAuthStateChanged(auth, u => { if ((u?.uid || '') !== (user?.uid || '')) conectar(u); }); } catch (e) { erro(e); }
+    },
+    async entrar(email, senha, criar) {
+      try {
+        await sdk(); localStorage.setItem('calma-nuvem', '1');
+        const r = await (criar ? F.createUserWithEmailAndPassword : F.signInWithEmailAndPassword)(auth, email, senha);
+        F.onAuthStateChanged(auth, u => { if ((u?.uid || '') !== (user?.uid || '')) conectar(u); });
+        await conectar(r.user);
+      } catch (e) { throw traduz(e); }
+    },
+    async esqueci(email) { try { await sdk(); await F.sendPasswordResetEmail(auth, email); } catch (e) { throw traduz(e); } },
+    async sair() { if (!auth) return; await conectar(null); localStorage.removeItem('calma-nuvem'); try { await F.signOut(auth); } catch (e) { erro(e); } },
+    async apagarEntrada(id) { if (user && id) try { await F.deleteDoc(ref('entrada', id)); } catch (e) { erro(e); } },
+    async fichaPublica(dona, payload) {
+      await sdk(true); const id = uid();
+      await Promise.race([F.setDoc(F.doc(fs, 'usuarios', dona, 'entrada', id), payload), new Promise((_, rej) => setTimeout(() => rej(new Error('demorou')), 15000))]);
+    },
   };
 })();
 
@@ -355,7 +495,7 @@ async function telaLock() {
   $('#esqueci') && ($('#esqueci').onclick = async () => {
     if (!confirm('Por segurança, não é possível recuperar a senha. Para criar outra, é preciso APAGAR todos os dados deste aparelho (restaure depois pelo backup). Continuar?')) return;
     if (prompt('Digite APAGAR para confirmar') !== 'APAGAR') return;
-    for (const s of ['clients', 'visits', 'settings']) await DB.clear(s); sess.set(0); telaLock();
+    await Nuvem.sair(); for (const s of ['clients', 'visits', 'settings']) await DB.clear(s); sess.set(0); telaLock();
   });
 }
 $('#cfg').onclick = () => { sess.set(0); route(); };
@@ -406,6 +546,14 @@ async function route() {
 addEventListener('hashchange', route);
 
 /* ===================== Início ===================== */
+function cartaoEntrada() {
+  const e = Nuvem.entrada(); if (!e.length) return '';
+  return `<div class="card" style="border-color:#bcd3b4;background:#eef5ea"><b>📥 ${e.length === 1 ? 'Chegou 1 ficha' : `Chegaram ${e.length} fichas`} pelo link de cadastro</b>
+    ${e.map(x => `<div class="row" style="align-items:center;margin-top:8px"><div class="grow">${esc(x.mae?.nome || 'Sem nome')}<div class="sub">${x.aceite ? fmtDH(x.aceite) : ''}</div></div><button class="btn sm" data-entrada="${x.id}">Revisar</button></div>`).join('')}</div>`;
+}
+const fmtDH = iso => new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+function ligarEntrada() { $$('[data-entrada]').forEach(b => b.onclick = () => { const x = Nuvem.entrada().find(e => e.id === b.dataset.entrada); if (x) telaImportar(x, x.id); }); }
+
 async function telaInicio() {
   shell('Início', { tab: 'inicio' });
   const st = await getSettings(); const { cs, vs, cmap } = await carregar();
@@ -417,12 +565,13 @@ async function telaInicio() {
   const d = new Date();
   const diasBackup = st.ultimoBackup ? Math.floor((Date.now() - new Date(st.ultimoBackup)) / 864e5) : null;
   const mudouDesdeBackup = !st.ultimoBackup || vs.concat(cs).some(x => (x.atualizadoEm || x.registradoEm || x.rascunhoEm || x.criadoEm || '') > st.ultimoBackup);
-  const avisoBackup = !st.demo && cs.length && mudouDesdeBackup && (diasBackup === null || diasBackup >= 7)
+  const avisoBackup = !Nuvem.logado() && !st.demo && cs.length && mudouDesdeBackup && (diasBackup === null || diasBackup >= 7)
     ? `<div class="card" style="border-color:#efe3bf;background:#fbf6e6"><b>💾 Hora de fazer backup</b><div class="sub" style="color:#5b5440">${diasBackup === null ? 'Você ainda não fez nenhum backup.' : `Último backup há ${diasBackup} dias.`} Os dados ficam só neste celular: salve uma cópia no Google Drive, iCloud ou e-mail.</div><button class="btn full" id="backupJa">Fazer backup agora</button></div>` : '';
   const boasVindas = !cs.length && !st.demo ? `<div class="card"><b>Bem-vinda ao CALMA! 🌿</b><div class="sub" style="margin-top:4px">Comece completando seus dados${st.whats ? '' : ' (o WhatsApp é usado no link de cadastro das clientes)'} e cadastrando sua primeira cliente.</div>
       <div class="btns">${st.nome && st.whats ? '' : '<a class="btn sec" href="#/config">Meus dados</a>'}<a class="btn" href="#/ficha">＋ Primeira cliente</a></div>
-      <button class="btn ghost full" id="demoStart">Explorar com dados de exemplo</button></div>` : '';
-  $('#app').innerHTML = `${st.demo ? '<div class="demo">Modo demonstração: dados fictícios. Apague em Ajustes quando for usar de verdade.</div>' : ''}${boasVindas}${avisoBackup}
+      <button class="btn ghost full" id="demoStart">Explorar com dados de exemplo</button>
+      ${Nuvem.configurado() && !Nuvem.logado() ? '<div class="sub" style="text-align:center;margin-top:10px">Já usa o CALMA em outro aparelho? <a href="#/config" style="color:var(--p);font-weight:650">Entre na sua conta</a> para trazer os dados.</div>' : ''}</div>` : '';
+  $('#app').innerHTML = `${st.demo ? '<div class="demo">Modo demonstração: dados fictícios. Apague em Ajustes quando for usar de verdade.</div>' : ''}${cartaoEntrada()}${boasVindas}${avisoBackup}
     <div class="hello"><div class="grow"><div class="brandline">CALMA | Consultoria em Aleitamento Materno</div><h2>${hr < 12 ? 'Bom dia' : hr < 18 ? 'Boa tarde' : 'Boa noite'}${st.nome ? ', ' + esc(primeiro(st.nome)) : ''}!</h2><p>${DIAS[d.getDay()]}, ${d.getDate()} de ${MESES[d.getMonth()]}</p></div></div>
     <div class="quick"><a class="btn" href="#/agendar"><span>📅</span>Agendar visita</a><a class="btn sec" href="#/ficha"><span>＋</span>Nova cliente</a></div>
     <div class="stats"><a class="stat" href="#/clientes"><b>${cs.length}</b><span>clientes</span></a><a class="stat" href="#/agenda?modo=semana"><b>${semana}</b><span>visitas nos próximos 7 dias</span></a><a class="stat ${pend ? 'alert' : ''}" href="#/atendimentos"><b>${pend}</b><span>para registrar</span></a></div>
@@ -431,6 +580,7 @@ async function telaInicio() {
     <div class="sec-title">Próximos atendimentos</div>
     ${prox.length ? prox.map(v => itemVisita(v, cmap[v.clientId])).join('') + '<a class="btn ghost full" href="#/agenda">Ver agenda completa</a>' : '<div class="card sub" style="text-align:center">Nenhuma visita futura agendada.</div>'}`;
   $('#backupJa') && ($('#backupJa').onclick = fazerBackup);
+  ligarEntrada();
   $('#demoStart') && ($('#demoStart').onclick = async () => { await seed(); toast('Dados de exemplo carregados'); route(); });
 }
 
@@ -439,7 +589,7 @@ async function telaClientes() {
   shell('Clientes', { tab: 'clientes' });
   const { cs, vs } = await carregar(); cs.sort((a, b) => a.mae.nome.localeCompare(b.mae.nome, 'pt-BR'));
   const ultima = {}; vs.filter(v => v.status === 'realizada').forEach(v => { if (!ultima[v.clientId] || v.data > ultima[v.clientId]) ultima[v.clientId] = v.data; });
-  $('#app').innerHTML = `<input id="busca" type="search" placeholder="Buscar mãe ou bebê..." style="margin-bottom:10px">
+  $('#app').innerHTML = `${cartaoEntrada()}<input id="busca" type="search" placeholder="Buscar mãe ou bebê..." style="margin-bottom:10px">
     <div class="btns" style="margin:0 0 12px"><a class="btn sec" href="#/ficha">＋ Nova cliente</a><button class="btn ghost" id="linkNovo">🔗 Link de cadastro</button><a class="btn ghost" href="#/receber">📥 Receber ficha</a></div>
     <div id="lista"></div>`;
   const render = f => {
@@ -452,6 +602,7 @@ async function telaClientes() {
   render(''); $('#busca').oninput = e => render(e.target.value);
   $('#linkNovo').onclick = () => compartilharLinkCadastro();
   fab('#/ficha', 'Nova cliente');
+  ligarEntrada();
 }
 
 async function telaCliente(id) {
@@ -569,7 +720,7 @@ async function telaFicha(id, q) {
     const f = lerFicha(); if (!f) return;
     const novo = { ...(c || { id: uid(), criadoEm: new Date().toISOString(), origem: 'consultora' }), ...f, atualizadoEm: new Date().toISOString() };
     delete novo.bebe;
-    if (imp) { novo.aceiteLGPD = imp.aceite || novo.aceiteLGPD; novo.revisado = true; importPendente = null; }
+    if (imp) { novo.aceiteLGPD = imp.aceite || novo.aceiteLGPD; novo.revisado = true; importPendente = null; Nuvem.apagarEntrada(imp.entradaId); }
     await DB.put('clients', novo); toast('Ficha salva');
     history.replaceState(null, '', '#/cliente/' + novo.id); route();
   };
@@ -932,13 +1083,13 @@ async function compartilharLinkCadastro(c) {
     $('#shOk').onclick = async () => { const w = $('#shW').value.trim(); if (w.replace(/\D/g, '').length < 10) return toast('Digite o WhatsApp com DDD'); await DB.put('settings', { ...(await getSettings()), whats: w }); fechar(); compartilharLinkCadastro(c); };
     setTimeout(() => $('#shW').focus(), 50); return;
   }
-  const p = new URLSearchParams({ w: telWa(st.whats) }); if (st.nome) p.set('n', st.nome);
+  const p = new URLSearchParams({ w: telWa(st.whats) }); if (st.nome) p.set('n', st.nome); if (Nuvem.logado()) p.set('u', Nuvem.uid());
   if (c) { p.set('c', c.id); p.set('d', b64e({ mae: { nome: c.mae.nome }, bebes: bebesDe(c).map(b => ({ id: b.id, nome: b.nome, nascimento: b.nascimento })) })); }
   const link = `${baseURL()}#cadastro?${p}`;
   const msg = `Olá${c ? ', ' + primeiro(c.mae.nome) : ''}! Para agilizar nosso atendimento, preencha sua ficha neste link: ${link}`;
   const tel = c?.mae.telefone ? telWa(c.mae.telefone) : '';
   box.innerHTML = `<div class="sheet-in"><h3>Link de cadastro${c ? ' para ' + esc(primeiro(c.mae.nome)) : ''}</h3>
-    <p class="sub">Envie para a cliente. Quando ela terminar, a ficha chega no seu WhatsApp e você toca em <b>Clientes → Receber ficha</b>.</p>
+    <p class="sub">Envie para a cliente. ${Nuvem.logado() ? 'Quando ela terminar, a ficha aparece sozinha no Início do app para você revisar.' : 'Quando ela terminar, a ficha chega no seu WhatsApp e você toca em <b>Clientes → Receber ficha</b>.'}</p>
     <textarea id="shMsg" readonly style="min-height:110px;font-size:14px">${esc(msg)}</textarea>
     <a class="btn full" href="https://wa.me/${tel}?text=${encodeURIComponent(msg)}" target="_blank" rel="noopener">Enviar pelo WhatsApp${c?.mae.telefone ? '' : ' (escolher contato)'}</a>
     <button class="btn sec full" id="shCopy">Copiar mensagem</button>
@@ -952,16 +1103,27 @@ function telaCadastroPublico(q) {
   let pre = {}; try { if (q.get('d')) pre = b64d(q.get('d')); } catch { }
   const nomeC = q.get('n') || 'sua consultora';
   $('#app').innerHTML = `<div class="pubhead"><img src="${LOGO_FULL}" alt="CALMA"><div>CALMA | Consultoria em Aleitamento Materno</div></div>
-    <div class="card"><b>Olá! 💚</b><p style="margin:6px 0 0">Preencha seus dados e os do seu bebê. Ao final, toque em <b>Enviar</b>: a mensagem com a ficha abre no WhatsApp para ${esc(nomeC)}.</p></div>
+    <div class="card"><b>Olá! 💚</b><p style="margin:6px 0 0">Preencha seus dados e os do seu bebê. Ao final, toque em <b>Enviar</b>${q.get('u') && Nuvem.configurado() ? `: a ficha vai direto para ${esc(nomeC)}` : `: a mensagem com a ficha abre no WhatsApp para ${esc(nomeC)}`}.</p></div>
     ${fichaHTML(pre)}
     <label class="toggle" style="justify-content:flex-start;color:var(--tx);font-size:14px;align-items:flex-start"><input type="checkbox" id="aceite" style="margin-top:2px"> <span>Autorizo o uso dos meus dados e dos dados do meu bebê exclusivamente para o acompanhamento da consultoria em aleitamento, conforme a LGPD (Lei 13.709/2018).</span></label>
-    <button class="btn full" id="enviar">Enviar pelo WhatsApp</button>
+    <button class="btn full" id="enviar">${q.get('u') && Nuvem.configurado() ? 'Enviar ficha' : 'Enviar pelo WhatsApp'}</button>
     <div class="note">Esta página não guarda seus dados neste aparelho. Eles vão apenas para ${esc(nomeC)}.</div>`;
   ligarFicha();
-  $('#enviar').onclick = () => {
+  $('#enviar').onclick = async () => {
     const f = lerFicha(); if (!f) return;
     if (!$('#aceite').checked) return toast('Marque a autorização para continuar');
     const payload = { v: 2, c: q.get('c') || null, ...f, aceite: new Date().toISOString() };
+    if (q.get('u') && Nuvem.configurado()) {
+      const bt = $('#enviar'); bt.disabled = true; bt.textContent = 'Enviando…';
+      try {
+        await Nuvem.fichaPublica(q.get('u'), payload);
+        const aviso = `Olá! Acabei de enviar minha ficha de cadastro (${f.mae.nome}).`;
+        $('#app').innerHTML = `<div class="pubhead"><img src="${LOGO_FULL}" alt="CALMA"><div>CALMA | Consultoria em Aleitamento Materno</div></div>
+          <div class="card" style="text-align:center"><div style="font-size:44px">✅</div><b>Ficha enviada!</b><p class="sub">Obrigada, ${esc(primeiro(f.mae.nome))}. ${esc(nomeC)} já recebeu seus dados. Você pode fechar esta página.</p>
+          ${q.get('w') ? `<a class="btn sec full" href="https://wa.me/${q.get('w')}?text=${encodeURIComponent(aviso)}">Avisar pelo WhatsApp (opcional)</a>` : ''}</div>`;
+        window.scrollTo(0, 0); return;
+      } catch (e) { bt.disabled = false; bt.textContent = 'Enviar ficha'; toast('Não deu para enviar direto. Vamos mandar pelo WhatsApp.'); await new Promise(r => setTimeout(r, 1200)); }
+    }
     const link = `${baseURL()}#importar=${b64e(payload)}`;
     const texto = `Olá! Preenchi minha ficha de cadastro (${f.mae.nome}).\n\nPara a consultora: copie esta mensagem inteira e, no app CALMA, toque em Clientes → Receber ficha.\n\n${link}`;
     location.href = `https://wa.me/${q.get('w') || ''}?text=${encodeURIComponent(texto)}`;
@@ -986,9 +1148,9 @@ async function telaReceber() {
   $('#rcPaste').onclick = async () => { try { $('#rcTxt').value = await navigator.clipboard.readText(); } catch { $('#rcTxt').focus(); toast('Toque e segure no campo e escolha Colar'); } };
   $('#rcOk').onclick = () => { const m = $('#rcTxt').value.match(/importar=([A-Za-z0-9_-]+)/); if (!m) return toast('Não encontrei a ficha nesta mensagem. Copie a mensagem inteira.'); telaImportar(m[1]); };
 }
-async function telaImportar(data) {
+async function telaImportar(data, entradaId) {
   shell('Importar cadastro', { tab: 'clientes' });
-  let p; try { p = b64d(data); } catch { $('#app').innerHTML = '<div class="empty">Link de cadastro inválido ou incompleto.</div>'; return; }
+  let p; try { p = typeof data === 'string' ? b64d(data) : JSON.parse(JSON.stringify(data)); } catch { $('#app').innerHTML = '<div class="empty">Link de cadastro inválido ou incompleto.</div>'; return; }
   if (p.bebe && !p.bebes) p.bebes = [p.bebe];
   // Evita duplicidade: procura pela cliente do link, depois e-mail, e nome + nascimento.
   delete p.mae.cpf;
@@ -1002,11 +1164,38 @@ async function telaImportar(data) {
     for (const nb of p.bebes || []) { const alvo = bebes.find(b => b.id === nb.id || (nb.nome && norm(b.nome) === norm(nb.nome))); if (alvo) Object.assign(alvo, limpa(nb)); else bebes.push({ ...nb, id: nb.id || uid() }); }
     merged = { ...existente, mae: { ...existente.mae, ...limpa(p.mae) }, bebes };
   } else merged = { id: uid(), criadoEm: new Date().toISOString(), origem: 'autocadastro', mae: p.mae, bebes: (p.bebes || []).map(b => ({ ...b, id: b.id || uid() })) };
-  importPendente = { merged, existente, aceite: p.aceite };
+  importPendente = { merged, existente, aceite: p.aceite, entradaId };
   history.replaceState(null, '', `#/ficha/${merged.id}?import=1`); route();
 }
 
 /* ===================== Ajustes ===================== */
+function cartaoNuvem() {
+  const el = $('#nuvemCard'); if (!el) return;
+  if (Nuvem.logado()) {
+    const e = Nuvem.estado();
+    el.innerHTML = `<h2>iPhone e iPad sincronizados</h2>
+      <p style="margin:0">${e === 'ok' ? '✅ Tudo salvo na nuvem.' : e === 'offline' ? '📴 Sem internet agora. As mudanças sobem quando a conexão voltar.' : '🔄 Sincronizando…'}</p>
+      <p class="sub">Conta: <b>${esc(Nuvem.email())}</b>. Entre com esta mesma conta no outro aparelho para ver os mesmos dados.</p>
+      <button class="btn ghost full" id="nvSair">Sair da conta neste aparelho</button>`;
+    $('#nvSair').onclick = async () => { if (!confirm('Sair da conta? Os dados continuam neste aparelho, mas param de sincronizar.')) return; await Nuvem.sair(); toast('Você saiu da conta'); cartaoNuvem(); };
+    return;
+  }
+  el.innerHTML = `<h2>Usar no iPhone e no iPad</h2>
+    <p class="sub" style="margin-top:0">Entre com sua conta para guardar tudo na nuvem e ver os mesmos dados em todos os seus aparelhos. Na primeira vez, toque em "Criar conta".</p>
+    <label for="nvE">E-mail</label><input id="nvE" type="email" autocomplete="username" inputmode="email">
+    <label for="nvS">Senha (mínimo 6 caracteres)</label><input id="nvS" type="password" autocomplete="current-password">
+    <div class="btns"><button class="btn" id="nvEntrar">Entrar</button><button class="btn sec" id="nvCriar">Criar conta</button></div>
+    <button class="btn ghost full" id="nvEsqueci">Esqueci a senha</button>`;
+  const vai = criar => async () => {
+    const em = $('#nvE').value.trim(), se = $('#nvS').value; if (!em || !se) return toast('Preencha e-mail e senha');
+    $$('#nuvemCard button').forEach(b => b.disabled = true); toast(criar ? 'Criando conta…' : 'Entrando…');
+    try { await Nuvem.entrar(em, se, criar); toast('Pronto! Seus dados estão sincronizando.'); cartaoNuvem(); }
+    catch (e) { $$('#nuvemCard button').forEach(b => b.disabled = false); alert(e.message); }
+  };
+  $('#nvEntrar').onclick = vai(false); $('#nvCriar').onclick = vai(true);
+  $('#nvEsqueci').onclick = async () => { const em = $('#nvE').value.trim(); if (!em) return toast('Digite seu e-mail primeiro'); try { await Nuvem.esqueci(em); alert('Enviamos um e-mail para trocar a senha.'); } catch (e) { alert(e.message); } };
+}
+
 async function telaConfig() {
   shell('Ajustes', { tab: 'config' });
   const st = await getSettings();
@@ -1019,13 +1208,14 @@ async function telaConfig() {
     <label for="sw">Seu WhatsApp (recebe as fichas de cadastro)</label><input id="sw" type="tel" value="${esc(st.whats)}" oninput="this.value=maskTel(this.value)">
     <label for="se">Seu e-mail</label><input id="se" type="email" value="${esc(st.email)}">
     <button class="btn full" id="salvar">Salvar</button></div>
+    ${Nuvem.configurado() ? `<div class="card" id="nuvemCard"></div>` : ''}
     <div class="card"><h2>Agenda e preferências</h2>
     <label for="sd">Duração padrão da visita</label><select id="sd">${[[30, '30 min'], [45, '45 min'], [60, '1 hora'], [90, '1h30'], [120, '2 horas']].map(([d, t]) => `<option value="${d}" ${st.duracao == d ? 'selected' : ''}>${t}</option>`).join('')}</select>
-    <div class="sub" style="margin-top:8px">Calendário: ao agendar, o app oferece "Calendário (iPhone)" e "Google Agenda" para criar o evento com lembrete. A sincronização automática chega na versão com servidor.</div></div>
+    <div class="sub" style="margin-top:8px">Calendário: ao agendar, o app oferece "Calendário (iPhone)" e "Google Agenda" para criar o evento com lembrete. </div></div>
     <div class="card"><h2>Segurança</h2>
     <label for="sb">Bloquear o app depois de</label><select id="sb">${[1, 5, 15, 60].map(m => `<option value="${m}" ${st.bloqueioMin == m ? 'selected' : ''}>${m < 60 ? m + ' min' : '1 hora'} fora do app</option>`).join('')}</select>
     <div class="btns"><button class="btn ghost" id="trocaSenha">Trocar senha</button><button class="btn ghost" id="bloquear">🔒 Bloquear agora</button></div></div>
-    <div class="card"><h2>Backup</h2><p class="sub" style="margin-top:0">Os dados ficam guardados neste celular. Faça backup toda semana e guarde o arquivo no Google Drive, iCloud ou no seu e-mail. Para trocar de celular, instale o app no novo aparelho e use "Restaurar".</p>
+    <div class="card"><h2>Backup</h2><p class="sub" style="margin-top:0">${Nuvem.logado() ? 'Com a conta conectada, tudo já fica salvo na nuvem. O backup em arquivo é uma cópia extra.' : 'Os dados ficam guardados neste celular.'} Faça backup toda semana e guarde o arquivo no Google Drive, iCloud ou no seu e-mail. Para trocar de celular, instale o app no novo aparelho e use "Restaurar".</p>
     <p class="sub">Último backup: <b>${st.ultimoBackup ? new Date(st.ultimoBackup).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : 'nenhum'}</b> · Armazenamento protegido: <b id="persistido">verificando…</b></p>
     <div class="btns"><button class="btn sec" id="exp">⬇️ Fazer backup</button><label class="btn ghost" style="margin:0">⬆️ Restaurar<input type="file" accept=".json,application/json" hidden id="imp"></label></div></div>
     <div class="card"><h2>Demonstração</h2><p class="sub" style="margin-top:0">${st.demo ? 'O app está com dados fictícios para teste.' : 'Carregue dados fictícios para testar o app.'}</p>
@@ -1042,6 +1232,7 @@ async function telaConfig() {
     const sal = uid(); await DB.put('settings', { ...s, senhaSal: sal, senhaHash: await hashSenha(n, sal) }); toast('Senha alterada');
   };
   $('#exp').onclick = fazerBackup;
+  if ($('#nuvemCard')) { cartaoNuvem(); const off = Nuvem.ouvir(() => { if (!$('#nuvemCard')) return off(); if (!$('#nuvemCard').contains(document.activeElement)) cartaoNuvem(); }); }
   (async () => { let p = false; try { p = await navigator.storage?.persisted?.(); } catch { } const el = $('#persistido'); if (el) el.textContent = p ? 'sim' : 'não (instale na tela de início)'; })();
   $('#imp').onchange = async e => {
     const f = e.target.files[0]; if (!f) return; try {
@@ -1120,7 +1311,7 @@ async function seed() {
 }
 
 if ('serviceWorker' in navigator && location.protocol === 'https:' && !/claude|anthropic/.test(location.hostname)) navigator.serviceWorker.register('sw.js').catch(() => { });
-DB.all('clients').then(cs => Promise.all(cs.map(c => { const velho = c.bebe && !c.bebes; migrar('clients', c); return (migrarCliente(c) || velho) ? DB.put('clients', c) : null; }))).finally(route);
+DBL.all('clients').then(cs => Promise.all(cs.map(c => { const velho = c.bebe && !c.bebes; migrar('clients', c); return (migrarCliente(c) || velho) ? DBL.put('clients', c) : null; }))).finally(() => { route(); if (!location.hash.startsWith('#cadastro')) Nuvem.iniciar(); });
 </script>
 </body>
 </html>
